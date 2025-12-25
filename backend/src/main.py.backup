@@ -1,0 +1,122 @@
+"""
+FlowTask - Punto de entrada principal
+"""
+import os
+import logging
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Variables de entorno requeridas
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+FIREBASE_CREDS = os.getenv("FIREBASE_CREDENTIALS_PATH")
+
+if not TELEGRAM_TOKEN:
+    logger.error("TELEGRAM_BOT_TOKEN no está configurado")
+    raise ValueError("TELEGRAM_BOT_TOKEN es requerido")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Maneja eventos de inicio y cierre de la aplicación."""
+    logger.info("🚀 Iniciando FlowTask API...")
+    
+    # Inicializar servicios aquí
+    from infrastructure.firebase_client import get_firestore_client
+    from src.infrastructure.telegram_bot import initialize_bot
+
+    
+    try:
+        # Inicializar Firebase
+        db = get_firestore_client()
+        logger.info("✅ Firebase inicializado")
+        
+        # Inicializar bot de Telegram (webhook se configura después)
+        bot = initialize_bot(TELEGRAM_TOKEN)
+        logger.info("✅ Bot de Telegram inicializado")
+        
+        # Guardar instancias en app.state para acceso global
+        app.state.db = db
+        app.state.bot = bot
+        
+        yield
+        
+    except Exception as e:
+        logger.error(f"❌ Error durante inicialización: {e}")
+        raise
+    finally:
+        logger.info("👋 Cerrando FlowTask API...")
+
+# Crear aplicación FastAPI
+app = FastAPI(
+    title="FlowTask API",
+    description="API para el asistente de calendario conversacional",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# Configurar CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def root():
+    """Endpoint raíz - Verificación de servicio."""
+    return {
+        "service": "FlowTask API",
+        "version": "0.1.0",
+        "status": "active",
+        "endpoints": {
+            "docs": "/docs",
+            "health": "/health",
+            "telegram_webhook": "/webhook/telegram"
+        }
+    }
+
+@app.get("/health")
+async def health_check():
+    """Endpoint de salud para monitoreo."""
+    return {
+        "status": "healthy",
+        "timestamp": "2025-01-15T00:00:00Z",  # Usar datetime real en producción
+        "services": {
+            "api": "operational",
+            "database": "connected" if hasattr(app.state, 'db') else "disconnected"
+        }
+    }
+
+@app.post("/webhook/telegram")
+async def telegram_webhook(update: dict):
+    """
+    Webhook para recibir mensajes de Telegram.
+    Esta es una versión mínima - la implementaremos mañana.
+    """
+    try:
+        logger.info(f"📩 Mensaje recibido de Telegram: {update}")
+        
+        # Respuesta temporal
+        return {"status": "received", "message": "Webhook funcionando"}
+        
+    except Exception as e:
+        logger.error(f"Error procesando webhook: {e}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
+if __name__ == "__main__":
+    import uvicorn
+    # Pasar la aplicación como string en lugar del objeto
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+

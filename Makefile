@@ -98,3 +98,12 @@ check-env:
 	else \
 		echo "✓ FIREBASE_PROJECT_ID está definido"; \
 	fi
+	
+	
+run-dev:
+	@echo "🚀 Iniciando servidor de desarrollo..."
+	cd backend/src && uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+run-prod:
+	@echo "🚀 Iniciando servidor de producción..."
+	cd backend/src && uvicorn main:app --host 0.0.0.0 --port 8000
