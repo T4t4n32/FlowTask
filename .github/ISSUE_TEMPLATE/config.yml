@@ -1,0 +1,31 @@
+# Configuración para Pull Requests
+pull_request:
+  title: "Por favor, complete el título del PR"
+  body: |
+    ## Descripción
+    Por favor, complete una descripción detallada de los cambios.
+
+    ## Tipo de Cambio
+    - [ ] Nueva funcionalidad
+    - [ ] Corrección de error
+    - [ ] Cambio disruptivo
+    - [ ] Cambios en documentación
+
+    ## Checklist
+    - [ ] He seguido las guías de estilo
+    - [ ] He realizado una auto-revisión
+    - [ ] He agregado pruebas relevantes
+
+# Configuración para Issues
+issue:
+  title: "Por favor, complete el título del issue"
+  body: |
+    ## Descripción
+    Por favor, describa el problema o solicitud.
+
+    ## Pasos para Reproducir (para bugs)
+    1. 
+    2. 
+    3. 
+
+    ## Comportamiento Esperado
