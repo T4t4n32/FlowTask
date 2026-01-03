@@ -2,6 +2,50 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "flowtask"
+version = "0.1.0"
+description = "Asistente de calendario conversacional"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "Tu Nombre", email = "tu@email.com" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "python-telegram-bot>=20.0",
+    "firebase-admin>=6.2.0",
+    "python-dateutil>=2.8.0",
+    "pytz>=2023.3",
+    "pydantic>=2.0.0",
+    "requests>=2.31.0",
+    "dateparser>=1.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0",
+    "flake8>=6.0",
+    "isort>=5.12",
+    "pre-commit>=3.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["backend"]  # Busca paquetes dentro de la carpeta backend
+include = ["src*"]   # Incluye todo lo que empiece con src
+
 [tool.black]
 line-length = 88
 target-version = ['py311']
@@ -45,21 +89,3 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
-
-[project]
-name = "flowtask"
-version = "0.1.0"
-description = "Asistente de calendario conversacional"
-readme = "README.md"
-requires-python = ">=3.11"
-license = {text = "MIT"}
-
-[project.optional-dependencies]
-dev = [
-  "black>=23.0",
-  "flake8>=6.0",
-  "isort>=5.12",
-  "pytest>=7.0",
-  "pytest-cov>=4.0",
-  "pre-commit>=3.0"
-]

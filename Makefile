@@ -1,4 +1,4 @@
-.PHONY: help setup install dev test lint format clean docker-build docker-run init-db
+.PHONY: help setup install dev test lint format clean run-dev check-env pre-commit
 
 # Variables
 PYTHON = python3
@@ -22,6 +22,8 @@ help:
 	@echo "  make format      - Formatea el código automáticamente"
 	@echo "  make clean       - Limpia archivos temporales"
 	@echo "  make pre-commit  - Ejecuta pre-commit en todos los archivos"
+	@echo "  make run-dev     - Inicia el servidor de desarrollo"
+	@echo "  make check-env   - Verifica variables de entorno"
 	@echo ""
 
 setup: clean
@@ -32,7 +34,7 @@ setup: clean
 	@echo "Instalando hooks de pre-commit..."
 	$(PRE_COMMIT) install
 	@echo ""
-	@echo "Entorno configurado correctamente."
+	@echo "✅ Entorno configurado correctamente."
 	@echo "Activa el entorno con: source $(VENV)/bin/activate"
 
 install:
@@ -45,18 +47,18 @@ dev:
 
 test:
 	@echo "Ejecutando pruebas..."
-	$(PYTEST) backend/tests/ -v --cov=backend/src --cov-report=html --cov-report=term
+	cd backend && $(PYTEST) tests/ -v
 
 lint:
 	@echo "Verificando estilo del código..."
-	$(FLAKE8) backend/src/
-	$(BLACK) --check backend/src/
-	$(ISORT) --check-only backend/src/
+	cd backend/src && $(FLAKE8) .
+	cd backend/src && $(BLACK) --check .
+	cd backend/src && $(ISORT) --check-only .
 
 format:
 	@echo "Formateando código..."
-	$(BLACK) backend/src/
-	$(ISORT) backend/src/
+	cd backend/src && $(BLACK) .
+	cd backend/src && $(ISORT) .
 
 clean:
 	@echo "Limpiando archivos temporales..."
@@ -75,35 +77,21 @@ pre-commit:
 	@echo "Ejecutando pre-commit en todos los archivos..."
 	$(PRE_COMMIT) run --all-files
 
-# Comandos específicos del proyecto
-init-db:
-	@echo "Inicializando base de datos..."
-	@echo "Este comando se implementará más adelante"
-
-run-dev:
-	@echo "Iniciando servidor de desarrollo..."
-	@echo "Este comando se implementará más adelante"
-
-check-env:
-	@echo "Verificando variables de entorno..."
-	@if [ -z "$$TELEGRAM_BOT_TOKEN" ]; then \
-		echo "ERROR: TELEGRAM_BOT_TOKEN no está definido"; \
-		exit 1; \
-	else \
-		echo "✓ TELEGRAM_BOT_TOKEN está definido"; \
-	fi
-	@if [ -z "$$FIREBASE_PROJECT_ID" ]; then \
-		echo "ERROR: FIREBASE_PROJECT_ID no está definido"; \
-		exit 1; \
-	else \
-		echo "✓ FIREBASE_PROJECT_ID está definido"; \
-	fi
-	
-	
 run-dev:
 	@echo "🚀 Iniciando servidor de desarrollo..."
 	cd backend/src && uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
-run-prod:
-	@echo "🚀 Iniciando servidor de producción..."
-	cd backend/src && uvicorn main:app --host 0.0.0.0 --port 8000
+check-env:
+	@echo "Verificando variables de entorno..."
+	@if [ -z "$$TELEGRAM_BOT_TOKEN" ]; then \
+		echo "❌ ERROR: TELEGRAM_BOT_TOKEN no está definido"; \
+		exit 1; \
+	else \
+		echo "✅ TELEGRAM_BOT_TOKEN está definido"; \
+	fi
+	@if [ -z "$$FIREBASE_CREDENTIALS_PATH" ]; then \
+		echo "❌ ERROR: FIREBASE_CREDENTIALS_PATH no está definido"; \
+		exit 1; \
+	else \
+		echo "✅ FIREBASE_CREDENTIALS_PATH está definido"; \
+	fi
