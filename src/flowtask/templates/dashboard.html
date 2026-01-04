@@ -3,164 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="FlowTask">
     <meta name="theme-color" content="#000000">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3593/3593587.png">
-    
     <title>FlowTask OS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
-        body { background: #000; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.02em; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { background: #000; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.02em; }
         .card-glass { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 32px; }
-        .mango-gradient { background: linear-gradient(135deg, #FFD93D 0%, #FF8400 100%); color: #000; box-shadow: 0 10px 40px rgba(255, 132, 0, 0.2); }
-        .progress-fill { transition: width 1.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .mango-gradient { background: linear-gradient(135deg, #FFD93D 0%, #FF8400 100%); color: #000; }
+        .progress-fill { transition: width 1s ease; }
         .exit-anim { animation: taskOut 0.5s forwards; }
         @keyframes taskOut { to { opacity: 0; transform: scale(0.9) translateY(-20px); filter: blur(8px); } }
-        #modal-historial { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.95); backdrop-filter:blur(10px); z-index:100; align-items:center; justify-content:center; padding:24px; }
-        
-        /* Evitar scroll elástico en iOS */
-        html, body { overflow-x: hidden; position: relative; height: 100%; }
-        body { overflow-y: auto; }
     </style>
 </head>
 <body class="p-6 pb-32">
 
-    <div id="data-bridge" data-hd="{{ stats.h_done }}" data-ht="{{ stats.h_total }}" data-td="{{ stats.t_done }}" data-tt="{{ stats.t_total }}" style="display:none"></div>
+    <div id="stats-data" data-hd="{{ stats.h_done }}" data-ht="{{ stats.h_total }}" data-td="{{ stats.t_done }}" data-tt="{{ stats.t_total }}" style="display:none"></div>
 
     <div class="max-w-lg mx-auto">
-        
-        <header class="mt-12 mb-12">
+        <header class="mt-10 mb-12">
             <div class="flex items-baseline gap-4 mb-8">
                 <h1 class="text-9xl font-extrabold tracking-tighter leading-none">{{ dia_num }}</h1>
                 <div>
                     <p class="text-orange-500 font-black text-2xl leading-none">{{ mes_txt }}</p>
-                    <p class="text-zinc-600 font-bold uppercase tracking-widest text-[10px] mt-1">SISTEMA ACTIVO</p>
+                    <p class="text-zinc-600 font-bold uppercase tracking-widest text-[10px] mt-1">Sincronizado</p>
                 </div>
             </div>
             
             <div class="p-6 card-glass border-white/5 flex items-center gap-5">
                 <div class="w-14 h-14 rounded-2xl bg-orange-500/10 flex items-center justify-center text-3xl">👋</div>
                 <div>
-                    <h2 class="text-2xl font-bold italic">¡{{ saludo }}, {{ user_name }}!</h2>
-                    <p class="text-zinc-500 text-sm font-medium">{{ fecha_friendly }}</p>
+                    <h2 class="text-2xl font-bold">¡{{ saludo }}, {{ user_name }}!</h2>
+                    <p class="text-zinc-500 text-sm">Actualizado: <span id="last-sync">--:--</span></p>
                 </div>
             </div>
         </header>
 
         <div class="grid grid-cols-2 gap-4 mb-10">
-            <div class="card-glass p-6 active:scale-95 transition-transform" onclick="verHistorial('habits')">
+            <div class="card-glass p-6">
                 <div class="flex justify-between items-end mb-3">
-                    <span class="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Hábitos</span>
+                    <span class="text-[10px] font-black text-zinc-600 uppercase">Hábitos</span>
                     <span id="h-pct" class="text-xs font-bold text-orange-500">0%</span>
                 </div>
                 <div class="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-                    <div id="h-bar" class="progress-fill h-full bg-orange-500 shadow-[0_0_15px_rgba(255,132,0,0.3)]"></div>
+                    <div id="h-bar" class="progress-fill h-full bg-orange-500"></div>
                 </div>
             </div>
-            <div class="card-glass p-6 active:scale-95 transition-transform" onclick="verHistorial('tasks')">
+            <div class="card-glass p-6">
                 <div class="flex justify-between items-end mb-3">
-                    <span class="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Tareas</span>
+                    <span class="text-[10px] font-black text-zinc-600 uppercase">Tareas</span>
                     <span id="t-pct" class="text-xs font-bold text-blue-500">0%</span>
                 </div>
                 <div class="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-                    <div id="t-bar" class="progress-fill h-full bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)]"></div>
+                    <div id="t-bar" class="progress-fill h-full bg-blue-500"></div>
                 </div>
             </div>
         </div>
 
-        {% if mango %}
-        <div class="mb-10">
-            <h3 class="text-[10px] font-black text-zinc-700 uppercase tracking-[0.4em] mb-4 text-center">Focus Mango</h3>
-            {% for m in mango %}
-            <div id="item-{{m.id}}" class="mango-gradient p-7 rounded-[2.5rem] mb-4 flex justify-between items-center">
-                <span class="font-black text-2xl tracking-tighter">{{ m.title }}</span>
-                <button onclick="marcarHecho('{{m.id}}', 'mango')" class="w-14 h-14 bg-black/15 rounded-3xl flex items-center justify-center active:scale-75">
-                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"/></svg>
-                </button>
+        <div id="main-content">
+            {% if mango %}
+            <div class="mb-10">
+                <h3 class="text-[10px] font-black text-zinc-700 uppercase tracking-[0.4em] mb-4">Focus Mango</h3>
+                {% for m in mango %}
+                <div id="item-{{m.id}}" class="mango-gradient p-7 rounded-[2.5rem] mb-4 flex justify-between items-center">
+                    <span class="font-black text-2xl tracking-tighter">{{ m.title }}</span>
+                    <button onclick="completar('{{m.id}}', 'mango')" class="w-14 h-14 bg-black/15 rounded-3xl flex items-center justify-center">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"/></svg>
+                    </button>
+                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
-        </div>
-        {% endif %}
+            {% endif %}
 
-        <div class="grid gap-10">
-            <section>
-                <h3 class="text-[10px] font-black text-zinc-800 uppercase tracking-[0.4em] mb-4">Rutinas</h3>
-                <div class="space-y-3">
-                    {% for h in habits %}
-                    <div id="item-{{h.id}}" class="card-glass p-6 flex justify-between items-center border-l-4 border-orange-600">
-                        <span class="font-bold text-zinc-200">{{ h.title }}</span>
-                        <button onclick="marcarHecho('{{h.id}}', 'h')" class="w-8 h-8 rounded-full border-2 border-orange-500/20 flex items-center justify-center">
-                            <div class="w-2.5 h-2.5 bg-orange-500 rounded-full shadow-[0_0_10px_#FF8400]"></div>
-                        </button>
+            <div class="grid gap-10">
+                <section>
+                    <h3 class="text-[10px] font-black text-zinc-800 uppercase tracking-[0.4em] mb-4">Hábitos</h3>
+                    <div class="space-y-3">
+                        {% for h in habits %}
+                        <div id="item-{{h.id}}" class="card-glass p-6 flex justify-between items-center border-l-4 border-orange-600">
+                            <span class="font-bold">{{ h.title }}</span>
+                            <button onclick="completar('{{h.id}}', 'h')" class="w-6 h-6 rounded-full border-2 border-orange-500/30"></button>
+                        </div>
+                        {% endfor %}
                     </div>
-                    {% endfor %}
-                </div>
-            </section>
+                </section>
 
-            <section>
-                <h3 class="text-[10px] font-black text-zinc-800 uppercase tracking-[0.4em] mb-4">Inbox</h3>
-                <div class="space-y-3">
-                    {% for t in tasks %}
-                    <div id="item-{{t.id}}" class="card-glass p-5 flex items-center group">
-                        <input type="checkbox" onchange="marcarHecho('{{t.id}}', 't')" class="w-7 h-7 rounded-xl border-2 border-zinc-800 bg-transparent appearance-none checked:bg-blue-600 transition-all mr-5 cursor-pointer">
-                        <span class="font-bold text-zinc-400">{{ t.title }}</span>
+                <section>
+                    <h3 class="text-[10px] font-black text-zinc-800 uppercase tracking-[0.4em] mb-4">Tareas</h3>
+                    <div class="space-y-3">
+                        {% for t in tasks %}
+                        <div id="item-{{t.id}}" class="card-glass p-5 flex items-center">
+                            <input type="checkbox" onchange="completar('{{t.id}}', 't')" class="w-7 h-7 rounded-xl border-2 border-zinc-800 bg-transparent appearance-none checked:bg-blue-600 mr-5">
+                            <span class="font-bold text-zinc-400">{{ t.title }}</span>
+                        </div>
+                        {% endfor %}
                     </div>
-                    {% endfor %}
-                </div>
-            </section>
-        </div>
-    </div>
-
-    <div id="modal-historial" onclick="cerrarModal()">
-        <div class="card-glass w-full max-w-sm p-8" onclick="event.stopPropagation()">
-            <h4 id="modal-titulo" class="text-3xl font-black uppercase tracking-tighter mb-6"></h4>
-            <div id="modal-lista" class="space-y-4 max-h-80 overflow-y-auto pr-2"></div>
-            <button onclick="cerrarModal()" class="w-full mt-8 py-4 bg-zinc-900 rounded-2xl font-bold text-xs uppercase">Cerrar</button>
+                </section>
+            </div>
         </div>
     </div>
 
     <script>
-        const bridge = document.getElementById('data-bridge').dataset;
-        let stats = { h: { d: parseInt(bridge.hd), t: parseInt(bridge.ht) }, t: { d: parseInt(bridge.td), t: parseInt(bridge.tt) } };
+        // Lógica de Barras
+        const b = document.getElementById('stats-data').dataset;
+        let s = { h: { d: parseInt(b.hd), t: parseInt(b.ht) }, t: { d: parseInt(b.td), t: parseInt(b.tt) } };
 
-        function actualizarBarras() {
+        function updateUI() {
             ['h', 't'].forEach(k => {
-                const p = stats[k].t > 0 ? Math.round((stats[k].d / stats[k].t) * 100) : 0;
-                const bar = document.getElementById(`${k}-bar`);
-                const txt = document.getElementById(`${k}-pct`);
-                if(bar) bar.style.width = p + '%';
-                if(txt) txt.innerText = p + '%';
+                const p = s[k].t > 0 ? Math.round((s[k].d / s[k].t) * 100) : 0;
+                document.getElementById(`${k}-bar`).style.width = p + '%';
+                document.getElementById(`${k}-pct`).innerText = p + '%';
             });
+            document.getElementById('last-sync').innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         }
 
-        async function marcarHecho(id, tipo) {
+        async function completar(id, tipo) {
             document.getElementById('item-'+id).classList.add('exit-anim');
-            if(stats[tipo]) { stats[tipo].d++; actualizarBarras(); }
+            if(s[tipo]) { s[tipo].d++; updateUI(); }
             await fetch('/complete/'+id, {method:'POST'});
             setTimeout(() => document.getElementById('item-'+id).remove(), 500);
         }
 
-        async function verHistorial(tipo) {
-            const mod = document.getElementById('modal-historial');
-            const list = document.getElementById('modal-lista');
-            document.getElementById('modal-titulo').innerText = tipo === 'habits' ? 'Log' : 'Hecho';
-            mod.style.display = 'flex';
-            const res = await fetch('/api/history/'+tipo);
-            const data = await res.json();
-            list.innerHTML = data.map(i => `
-                <div class="flex justify-between items-center p-4 bg-white/5 rounded-2xl">
-                    <span class="font-bold text-sm ${i.status === '✅' ? 'text-zinc-200' : 'text-zinc-700'}">${i.title}</span>
-                    <span class="text-[10px] font-black text-zinc-800">${i.time}</span>
-                </div>
-            `).join('') || '<p class="text-center text-zinc-800 py-10">Vacío</p>';
-        }
+        // --- AUTO-REFRESCO (Cada 10 segundos revisa si hay cambios) ---
+        setInterval(async () => {
+            // Solo refresca la página completa si el usuario no está tocando nada
+            // Esto asegura que lo que envíes por Telegram aparezca solo en el celular
+            const res = await fetch(window.location.href);
+            const html = await res.text();
+            const parser = new DOMParser();
+            const newDoc = parser.parseFromString(html, 'text/html');
+            
+            // Actualizar solo el contenido de las listas
+            document.getElementById('main-content').innerHTML = newDoc.getElementById('main-content').innerHTML;
+            
+            // Actualizar los datos de las barras
+            const newB = newDoc.getElementById('stats-data').dataset;
+            s = { h: { d: parseInt(newB.hd), t: parseInt(newB.ht) }, t: { d: parseInt(newB.td), t: parseInt(newB.tt) } };
+            updateUI();
+        }, 10000); 
 
-        function cerrarModal() { document.getElementById('modal-historial').style.display = 'none'; }
-        window.onload = actualizarBarras;
+        window.onload = updateUI;
     </script>
 </body>
 </html>

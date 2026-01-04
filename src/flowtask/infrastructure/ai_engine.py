@@ -22,7 +22,7 @@ class AIEngine:
     async def classify_text(self, text: str) -> AIResponse:
         low_text = text.lower().strip()
         
-        # --- ATAJOS DIRECTOS (PUERTA TRASERA) ---
+        # --- ATAJOS MANUALES (Prioridad Máxima) ---
         if low_text.startswith("habito:"):
             return AIResponse(intent="SAVE", category="HABIT", clean_title=text[7:].strip(), is_habit=True)
         if low_text.startswith("tarea:"):
@@ -30,11 +30,16 @@ class AIEngine:
         if low_text.startswith("mango:"):
             return AIResponse(intent="SAVE", category="MANGO_REL", clean_title=text[6:].strip(), is_habit=False)
 
-        # --- LÓGICA DE IA ---
+        # --- LÓGICA DE INTELIGENCIA ARTIFICIAL ---
         prompt = (
-            f"Analiza: '{text}'. Responde estrictamente un JSON: "
-            "{\"intent\": \"SAVE\"/\"COMPLETE\", \"category\": \"HABIT\"/\"MANGO_REL\"/\"TASK\", "
-            "\"clean_title\": \"texto\", \"is_habit\": bool, \"ids_to_complete\": []}"
+            f"Analiza este mensaje: '{text}'. \n"
+            "Reglas de salida:\n"
+            "1. Si es una rutina repetitiva, category='HABIT' e is_habit=true.\n"
+            "2. Si es algo urgente o muy importante, category='MANGO_REL'.\n"
+            "3. Si es algo general, category='TASK'.\n"
+            "Responde solo el JSON: "
+            "{\"intent\": \"SAVE\", \"category\": \"HABIT\"|\"MANGO_REL\"|\"TASK\", "
+            "\"clean_title\": \"título corto\", \"is_habit\": bool, \"ids_to_complete\": []}"
         )
         
         try:
@@ -42,7 +47,9 @@ class AIEngine:
                 res = await client.post(self.url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=10.0)
                 raw_res = res.json()['candidates'][0]['content']['parts'][0]['text']
                 data = json.loads(raw_res.strip().replace("```json", "").replace("```", ""))
+                
+                # Forzar consistencia
+                if data['category'] == "HABIT": data['is_habit'] = True
                 return AIResponse(**data)
-        except Exception as e:
-            print(f"Fallback IA por error: {e}")
+        except Exception:
             return AIResponse(intent="SAVE", category="TASK", clean_title=text, is_habit=False)
