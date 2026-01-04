@@ -20,53 +20,67 @@ class AIEngine:
         self.url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.api_key}"
 
     async def classify_text(self, text: str) -> AIResponse:
-        system_prompt = """
-        Eres el 'FlowTask OS Core', un sistema de inteligencia avanzada para productividad. 
-        Tu objetivo es convertir mensajes informales en datos estructurados.
+        # Prompt de nivel industrial con lógica de discriminación
+        instruction = f"""
+        ACTÚA COMO UN SISTEMA OPERATIVO LÓGICO DE PRODUCTIVIDAD.
+        Tu tarea es procesar el siguiente mensaje del usuario y clasificarlo en una de las 3 categorías del sistema.
 
-        REGLAS DE CLASIFICACIÓN:
-        1. MANGO_REL (Prioridad): Tareas críticas, proyectos importantes, urgencias o compromisos de alto valor.
-           - Ejemplo: "Enviar propuesta al cliente", "Llamar al abogado", "Urgente arreglar la fuga".
-        2. HABIT (Hábito): Acciones que se repiten, rutinas de salud, estudio o bienestar.
-           - Ejemplo: "Ir al gym", "Meditar", "Leer 20 min", "Tomar agua".
-        3. TASK (Tarea): Recados comunes, recordatorios simples de un solo paso.
-           - Ejemplo: "Comprar pan", "Sacar la basura", "Lavar el carro".
+        --- CRITERIOS DE EVALUACIÓN ---
+        
+        1. MANGO_REL (Prioridad Crítica):
+           - Definición: Tareas únicas que NO son rutinarias pero son VITALES o URGENTES.
+           - Palabras clave disparadoras: "urgente", "importante", "hoy mismo", "reunión", "entregar", "llamar a", "pagar", "proyecto", "examen".
+           - Diferenciación: Si es algo que se hace una vez pero tiene consecuencias si no se hace, es MANGO.
 
-        REGLAS DE TÍTULO (clean_title):
-        - Resume la acción a máximo 4 palabras.
-        - Elimina palabras innecesarias como "recuerdame", "tengo que", "porfa".
-        - Usa mayúscula inicial.
+        2. HABIT (Hábito/Rutina):
+           - Definición: Acciones repetitivas que forman parte de un estilo de vida o disciplina.
+           - Palabras clave disparadoras: "siempre", "cada día", "todas las mañanas", "diario", "rutina", "entrenar", "meditar", "leer", "estudiar", "limpiar", "gym".
+           - REGLA DE ORO: Si la acción es recurrente, SIEMPRE es HABIT, sin importar qué tan importante sea.
 
-        RESPONDE ESTRICTAMENTE EN JSON:
-        {
-          "intent": "SAVE",
+        3. TASK (Tarea General):
+           - Definición: Recados de baja prioridad, cosas para el "Inbox" que no son urgentes ni recurrentes.
+           - Palabras clave disparadoras: "comprar", "traer", "ver", "buscar", "recoger".
+           - Diferenciación: Si no encaja en las anteriores, cae aquí por defecto.
+
+        --- REGLAS DE FORMATEO ---
+        - 'clean_title': Extrae el núcleo de la acción. Elimina "tengo que", "recuérdame", "quiero". Máximo 4 palabras.
+        - 'is_habit': Debe ser TRUE solo si la categoría es HABIT.
+
+        --- ANÁLISIS PASO A PASO ---
+        Mensaje del usuario: "{text}"
+
+        Responde ÚNICAMENTE en este formato JSON:
+        {{
           "category": "MANGO_REL" | "HABIT" | "TASK",
-          "clean_title": "Título corto",
-          "is_habit": true (solo si es HABIT) o false
-        }
-
-        EJEMPLOS:
-        - "No me dejes olvidar pagar la luz hoy" -> {"category": "MANGO_REL", "clean_title": "Pagar factura luz", "is_habit": false}
-        - "Quiero empezar a caminar cada mañana" -> {"category": "HABIT", "clean_title": "Caminar mañana", "is_habit": true}
-        - "Hay que comprar tomates" -> {"category": "TASK", "clean_title": "Comprar tomates", "is_habit": false}
+          "clean_title": "String",
+          "is_habit": boolean
+        }}
         """
 
         try:
             async with httpx.AsyncClient() as client:
-                payload = {
-                    "contents": [{"parts": [{"text": f"{system_prompt}\n\nMensaje: {text}"}]}]
-                }
-                res = await client.post(self.url, json=payload, timeout=15.0)
-                raw_res = res.json()['candidates'][0]['content']['parts'][0]['text']
-                data = json.loads(raw_res.strip().replace("```json", "").replace("```", ""))
+                res = await client.post(self.url, json={"contents": [{"parts": [{"text": instruction}]}]}, timeout=20.0)
+                raw_data = res.json()['candidates'][0]['content']['parts'][0]['text']
+                # Limpieza de posibles tags de markdown que devuelve la IA
+                clean_json = raw_data.strip().replace("```json", "").replace("```", "")
+                parsed = json.loads(clean_json)
                 
-                # Doble verificación de seguridad
-                if data['category'] == "HABIT":
-                    data['is_habit'] = True
+                # Post-procesamiento de seguridad para evitar errores de la IA
+                if parsed['category'] == "HABIT":
+                    parsed['is_habit'] = True
                 else:
-                    data['is_habit'] = False
-                    
-                return AIResponse(**data)
+                    parsed['is_habit'] = False
+
+                return AIResponse(**parsed)
         except Exception as e:
-            print(f"Error AI: {e}")
-            return AIResponse(intent="SAVE", category="TASK", clean_title=text, is_habit=False)
+            print(f"ERROR CRÍTICO IA: {e}")
+            # Fallback lógico manual si la IA falla
+            return self._manual_fallback(text)
+
+    def _manual_fallback(self, text: str) -> AIResponse:
+        t = text.lower()
+        if any(w in t for w in ["cada", "diario", "gym", "meditar", "leer"]):
+            return AIResponse(category="HABIT", clean_title=text[:20], is_habit=True)
+        if any(w in t for w in ["urgente", "importante", "pagar", "llamar"]):
+            return AIResponse(category="MANGO_REL", clean_title=text[:20], is_habit=False)
+        return AIResponse(category="TASK", clean_title=text[:20], is_habit=False)
