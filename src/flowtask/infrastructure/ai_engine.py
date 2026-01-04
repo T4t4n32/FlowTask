@@ -1,11 +1,13 @@
 import os
 import json
 import httpx
+import logging
 from pydantic import BaseModel
 from typing import List, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 class AIResponse(BaseModel):
     intent: str = "SAVE"
@@ -17,60 +19,33 @@ class AIResponse(BaseModel):
 class AIEngine:
     def __init__(self):
         self.api_key = os.getenv("GEMINI_API_KEY")
-        self.url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.api_key}"
+        self.url = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={self.api_key}"
+
+    def _manual_logic(self, text: str) -> AIResponse:
+        t = text.lower()
+        if any(w in t for w in ["pagar", "factura", "banco", "urgente", "cita", "reunion", "importante", "jefe", "entrega", "examen"]):
+            return AIResponse(category="MANGO_REL", clean_title=text[:25].capitalize(), is_habit=False)
+        if any(w in t for w in ["cada", "diario", "gym", "meditar", "leer", "rutina", "siempre", "entrenar"]):
+            return AIResponse(category="HABIT", clean_title=text[:25].capitalize(), is_habit=True)
+        return AIResponse(category="TASK", clean_title=text[:25].capitalize(), is_habit=False)
 
     async def classify_text(self, text: str) -> AIResponse:
-        # PROMPT DE ALTA INTENSIDAD PARA DIFERENCIACIÓN TOTAL
-        system_context = """
-        ACTÚA COMO EL NÚCLEO DE FLOWTASK OS. TU MISIÓN ES TRANSFORMAR LENGUAJE NATURAL EN JSON.
-
-        REGLAS DE CATEGORÍA:
-        1. MANGO_REL: Compromisos críticos, PAGOS, REUNIONES, citas médicas, urgencias, trabajo con terceros.
-           - Ejemplo: "Llamar al cliente", "Pagar recibo", "Cita dentista", "Reunión 3pm".
-        2. HABIT: Rutinas, salud, ejercicio, estudio repetitivo, autocuidado.
-           - Ejemplo: "Gym", "Meditar", "Leer 10 min", "Cada mañana".
-        3. TASK: Recados simples, compras, cosas para el inbox sin urgencia.
-           - Ejemplo: "Comprar pan", "Ver serie", "Limpiar mesa".
-
-        RESPONDE ESTRICTAMENTE JSON:
-        {
-          "category": "MANGO_REL" | "HABIT" | "TASK",
-          "clean_title": "Máximo 3 palabras",
-          "is_habit": boolean
-        }
-        """
-
+        if not self.api_key: return self._manual_logic(text)
+        payload = {"contents": [{"parts": [{"text": f"Clasifica en JSON (category, clean_title, is_habit). Mensaje: {text}"}]}]}
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self.url, 
-                    json={"contents": [{"parts": [{"text": f"{system_context}\n\nMENSAJE: {text}"}]}]}, 
-                    timeout=12.0
-                )
-                res_data = response.json()
-                
-                # Extracción segura
-                raw_output = res_data['candidates'][0]['content']['parts'][0]['text']
-                clean_json = raw_output.strip().replace("```json", "").replace("```", "")
-                data = json.loads(clean_json)
-
-                # VALIDACIÓN MANUAL POST-IA (FORCE MANGO/HABIT)
-                t = text.lower()
-                mango_triggers = ["pagar", "factura", "banco", "reunion", "cita", "urgente", "jefe", "médico", "examen"]
-                habit_triggers = ["cada", "diario", "siempre", "gym", "meditar", "rutina", "entrenar", "mañana"]
-
-                if any(w in t for w in mango_triggers):
-                    data["category"] = "MANGO_REL"
-                    data["is_habit"] = False
-                elif any(w in t for w in habit_triggers):
-                    data["category"] = "HABIT"
-                    data["is_habit"] = True
-
-                # Sincronización de booleano
-                data["is_habit"] = True if data["category"] == "HABIT" else False
-                
-                return AIResponse(**data)
-        except Exception as e:
-            print(f"DEBUG: Error AI Engine: {e}")
-            # FALLBACK DE EMERGENCIA: No dejar al usuario sin respuesta
-            return AIResponse(intent="SAVE", category="TASK", clean_title=text[:25], is_habit=False)
+                response = await client.post(self.url, json=payload, timeout=5.0)
+                if response.status_code != 200: return self._manual_logic(text)
+                data = response.json()
+                if 'candidates' in data:
+                    content = data['candidates'][0]['content']['parts'][0]['text']
+                    res = json.loads(content.strip().replace("```json", "").replace("```", ""))
+                    t = text.lower()
+                    if any(w in t for w in ["pagar", "urgente", "cita"]):
+                        res["category"] = "MANGO_REL"
+                        res["is_habit"] = False
+                    res["is_habit"] = True if res["category"] == "HABIT" else False
+                    return AIResponse(**res)
+                return self._manual_logic(text)
+        except Exception:
+            return self._manual_logic(text)

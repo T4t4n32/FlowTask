@@ -2,15 +2,11 @@ import os
 import httpx
 import sys
 import logging
-from datetime import datetime, date
-from fastapi import FastAPI, Request, BackgroundTasks
-from fastapi.responses import HTMLResponse, JSONResponse
+from datetime import datetime, date, timedelta
+from fastapi import FastAPI, Request, BackgroundTasks, Query
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
-
-# Configuración de logs para ver errores en Railway
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
@@ -20,99 +16,53 @@ from src.flowtask.infrastructure.ai_engine import AIEngine
 from src.flowtask.infrastructure.database import init_db, SessionLocal, TaskModel, save_to_db
 
 load_dotenv(dotenv_path=os.path.join(PROJECT_ROOT, ".env"))
-
 app = FastAPI()
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
-
 init_db()
 ai_engine = AIEngine()
 
-# TOKEN DE TELEGRAM
-TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
-TELEGRAM_SEND_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-
-async def notify_telegram(chat_id: int, text: str):
-    """Función aislada para enviar mensajes y evitar que el webhook cuelgue."""
-    async with httpx.AsyncClient() as client:
-        try:
-            await client.post(TELEGRAM_SEND_URL, json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "Markdown"
-            }, timeout=5.0)
-        except Exception as e:
-            logger.error(f"Error enviando a Telegram: {e}")
-
-@app.post("/webhook/telegram")
-async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
-    try:
-        data = await request.json()
-        if "message" not in data or "text" not in data["message"]:
-            return {"ok": True}
-
-        chat_id = data["message"]["chat"]["id"]
-        original_text = data["message"]["text"]
-
-        # 1. Procesar con IA
-        ai_res = await ai_engine.classify_text(original_text)
-        
-        # 2. Guardar en DB
-        save_to_db(ai_res)
-
-        # 3. Preparar respuesta estética
-        icons = {"MANGO_REL": "🥭 *MANGO*", "HABIT": "🔄 *HÁBITO*", "TASK": "✅ *TAREA*"}
-        response_msg = f"{icons.get(ai_res.category, '📌')}\n\n*Registrado:* {ai_res.clean_title}"
-        
-        # 4. Enviar notificación (Background para no bloquear el webhook)
-        background_tasks.add_task(notify_telegram, chat_id, response_msg)
-
-    except Exception as e:
-        logger.error(f"Falla crítica en Webhook: {e}")
-        
-    return {"ok": True}
-
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard_view(request: Request):
+async def dashboard(request: Request, day: str = Query(None)):
     db = SessionLocal()
-    today = date.today()
     try:
-        # Obtener todos los ítems de hoy
-        all_items = db.query(TaskModel).filter(TaskModel.created_at >= today).all()
+        target_date = datetime.strptime(day, "%Y-%m-%d").date() if day else date.today()
+        prev_day = (target_date - timedelta(days=1)).strftime("%Y-%m-%d")
+        next_day = (target_date + timedelta(days=1)).strftime("%Y-%m-%d")
         
-        # Listas para renderizado
-        mango = [i for i in all_items if i.category == "MANGO_REL" and not i.completed]
-        habits = [i for i in all_items if i.is_habit and not i.completed]
-        tasks = [i for i in all_items if i.category == "TASK" and not i.is_habit and not i.completed]
+        items = db.query(TaskModel).filter(
+            TaskModel.created_at >= target_date,
+            TaskModel.created_at < target_date + timedelta(days=1)
+        ).all()
 
-        # Estadísticas para las barras de progreso
-        h_group = [i for i in all_items if i.is_habit]
-        t_group = [i for i in all_items if not i.is_habit] # Tareas + Mangos
-
-        ahora = datetime.now()
+        # Días de la semana en español
+        dias_semana = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"]
+        nombre_dia = dias_semana[target_date.weekday()]
         meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
-
+        
         return templates.TemplateResponse("dashboard.html", {
             "request": request,
-            "user_name": "Tatan",
-            "dia_num": ahora.day,
-            "mes_txt": meses[ahora.month-1],
-            "fecha_friendly": f"{ahora.day} de {meses[ahora.month-1].capitalize()}",
-            "saludo": "Hola",
-            "mango": mango,
-            "habits": habits,
-            "tasks": tasks,
+            "current_date": target_date.strftime("%Y-%m-%d"),
+            "dia_num": target_date.day,
+            "nombre_dia": nombre_dia,
+            "mes_txt": meses[target_date.month-1],
+            "año": target_date.year,
+            "prev_day": prev_day,
+            "next_day": next_day,
+            "is_today": target_date == date.today(),
+            "mango": [i for i in items if i.category == "MANGO_REL" and not i.completed],
+            "habits": [i for i in items if i.is_habit and not i.completed],
+            "tasks": [i for i in items if i.category == "TASK" and not i.is_habit and not i.completed],
             "stats": {
-                "h_done": len([i for i in h_group if i.completed]),
-                "h_total": len(h_group),
-                "t_done": len([i for i in t_group if i.completed]),
-                "t_total": len(t_group)
+                "h_done": len([i for i in items if i.is_habit and i.completed]),
+                "h_total": len([i for i in items if i.is_habit]),
+                "t_done": len([i for i in items if not i.is_habit and i.completed]),
+                "t_total": len([i for i in items if not i.is_habit])
             }
         })
-    finally:
-        db.close()
+    finally: db.close()
 
 @app.post("/complete/{task_id}")
-async def complete_task(task_id: int):
+async def complete(task_id: int):
     db = SessionLocal()
     item = db.query(TaskModel).filter(TaskModel.id == task_id).first()
     if item:
@@ -121,14 +71,38 @@ async def complete_task(task_id: int):
     db.close()
     return {"ok": True}
 
-@app.get("/api/history/{category_type}")
-async def api_history(category_type: str):
+@app.delete("/delete/{task_id}")
+async def delete_task(task_id: int):
     db = SessionLocal()
-    today = date.today()
-    items = db.query(TaskModel).filter(TaskModel.created_at >= today, TaskModel.completed == True).all()
-    if category_type == "habits":
-        filtered = [i for i in items if i.is_habit]
-    else:
-        filtered = [i for i in items if not i.is_habit]
+    item = db.query(TaskModel).filter(TaskModel.id == task_id).first()
+    if item:
+        db.delete(item)
+        db.commit()
     db.close()
-    return [{"title": i.title, "time": i.created_at.strftime("%H:%M")} for i in filtered]
+    return {"ok": True}
+
+@app.get("/api/history/{cat}")
+async def history(cat: str, day: str = Query(None)):
+    db = SessionLocal()
+    target_date = datetime.strptime(day, "%Y-%m-%d").date() if day else date.today()
+    items = db.query(TaskModel).filter(
+        TaskModel.created_at >= target_date,
+        TaskModel.created_at < target_date + timedelta(days=1),
+        TaskModel.completed == True
+    ).all()
+    filtered = [i for i in items if i.is_habit] if cat == "habits" else [i for i in items if not i.is_habit]
+    db.close()
+    return [{"id": i.id, "title": i.title, "time": i.created_at.strftime("%H:%M")} for i in filtered]
+
+@app.post("/webhook/telegram")
+async def webhook(request: Request, background_tasks: BackgroundTasks):
+    data = await request.json()
+    if "message" in data and "text" in data["message"]:
+        chat_id = data["message"]["chat"]["id"]
+        res = await ai_engine.classify_text(data["message"]["text"])
+        save_to_db(res)
+        token = os.getenv("TELEGRAM_TOKEN")
+        async with httpx.AsyncClient() as client:
+            await client.post(f"https://api.telegram.org/bot{token}/sendMessage", 
+                              json={"chat_id": chat_id, "text": f"*{res.category}* registrado."})
+    return {"ok": True}
