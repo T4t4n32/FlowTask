@@ -3,18 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#000000">
     <title>FlowTask OS</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
         body { background: #000; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.02em; }
-        .card-glass { background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 32px; }
-        .mango-gradient { background: linear-gradient(135deg, #FFD93D 0%, #FF8400 100%); color: #000; }
-        .progress-fill { transition: width 1s ease; }
-        .exit-anim { animation: taskOut 0.5s forwards; }
-        @keyframes taskOut { to { opacity: 0; transform: scale(0.9) translateY(-20px); filter: blur(8px); } }
+        .card-glass { background: rgba(18, 18, 18, 0.8); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 30px; backdrop-filter: blur(10px); }
+        .mango-card { background: linear-gradient(135deg, #FFD93D 0%, #FF8400 100%); color: #000; box-shadow: 0 10px 30px rgba(255, 132, 0, 0.3); }
+        .progress-fill { transition: width 1s cubic-bezier(0.4, 0, 0.2, 1); }
+        .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:100; align-items:center; justify-content:center; padding:20px; backdrop-filter: blur(10px); }
+        .exit-anim { animation: fadeOut 0.4s forwards; }
+        @keyframes fadeOut { to { opacity: 0; transform: scale(0.9); filter: blur(10px); } }
     </style>
 </head>
 <body class="p-6 pb-32">
@@ -22,80 +21,81 @@
     <div id="stats-data" data-hd="{{ stats.h_done }}" data-ht="{{ stats.h_total }}" data-td="{{ stats.t_done }}" data-tt="{{ stats.t_total }}" style="display:none"></div>
 
     <div class="max-w-lg mx-auto">
-        <header class="mt-10 mb-12">
+        <header class="mt-10 mb-10">
             <div class="flex items-baseline gap-4 mb-8">
-                <h1 class="text-9xl font-extrabold tracking-tighter leading-none">{{ dia_num }}</h1>
+                <h1 class="text-8xl font-extrabold tracking-tighter">{{ dia_num }}</h1>
                 <div>
-                    <p class="text-orange-500 font-black text-2xl leading-none">{{ mes_txt }}</p>
-                    <p class="text-zinc-600 font-bold uppercase tracking-widest text-[10px] mt-1">Sincronizado</p>
+                    <p class="text-orange-500 font-black text-xl leading-none">{{ mes_txt }}</p>
+                    <p class="text-zinc-600 font-bold text-[10px] tracking-widest mt-1 uppercase">Cloud Sync Active</p>
                 </div>
             </div>
-            
-            <div class="p-6 card-glass border-white/5 flex items-center gap-5">
-                <div class="w-14 h-14 rounded-2xl bg-orange-500/10 flex items-center justify-center text-3xl">👋</div>
+            <div class="p-6 card-glass flex items-center gap-4">
+                <div class="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center text-2xl">⚡</div>
                 <div>
-                    <h2 class="text-2xl font-bold">¡{{ saludo }}, {{ user_name }}!</h2>
-                    <p class="text-zinc-500 text-sm">Actualizado: <span id="last-sync">--:--</span></p>
+                    <h2 class="text-xl font-bold">¡{{ saludo }}, Tatan!</h2>
+                    <p class="text-zinc-500 text-xs">{{ fecha_friendly }}</p>
                 </div>
             </div>
         </header>
 
         <div class="grid grid-cols-2 gap-4 mb-10">
-            <div class="card-glass p-6">
-                <div class="flex justify-between items-end mb-3">
-                    <span class="text-[10px] font-black text-zinc-600 uppercase">Hábitos</span>
+            <div class="card-glass p-5" onclick="abrirHistorial('habits')">
+                <div class="flex justify-between items-end mb-2">
+                    <span class="text-[9px] font-black text-zinc-500 uppercase">RUTINAS</span>
                     <span id="h-pct" class="text-xs font-bold text-orange-500">0%</span>
                 </div>
-                <div class="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                <div class="h-1 bg-zinc-900 rounded-full overflow-hidden">
                     <div id="h-bar" class="progress-fill h-full bg-orange-500"></div>
                 </div>
             </div>
-            <div class="card-glass p-6">
-                <div class="flex justify-between items-end mb-3">
-                    <span class="text-[10px] font-black text-zinc-600 uppercase">Tareas</span>
+            <div class="card-glass p-5" onclick="abrirHistorial('tasks')">
+                <div class="flex justify-between items-end mb-2">
+                    <span class="text-[9px] font-black text-zinc-500 uppercase">TAREAS</span>
                     <span id="t-pct" class="text-xs font-bold text-blue-500">0%</span>
                 </div>
-                <div class="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                <div class="h-1 bg-zinc-900 rounded-full overflow-hidden">
                     <div id="t-bar" class="progress-fill h-full bg-blue-500"></div>
                 </div>
             </div>
         </div>
 
-        <div id="main-content">
+        <div id="content-refresh">
             {% if mango %}
             <div class="mb-10">
-                <h3 class="text-[10px] font-black text-zinc-700 uppercase tracking-[0.4em] mb-4">Focus Mango</h3>
+                <h3 class="text-[10px] font-black text-zinc-700 uppercase tracking-[0.3em] mb-4 ml-2">Prioridad Mango</h3>
                 {% for m in mango %}
-                <div id="item-{{m.id}}" class="mango-gradient p-7 rounded-[2.5rem] mb-4 flex justify-between items-center">
-                    <span class="font-black text-2xl tracking-tighter">{{ m.title }}</span>
-                    <button onclick="completar('{{m.id}}', 'mango')" class="w-14 h-14 bg-black/15 rounded-3xl flex items-center justify-center">
-                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="4" d="M5 13l4 4L19 7"/></svg>
+                <div id="item-{{m.id}}" class="mango-card p-6 rounded-[2rem] mb-4 flex justify-between items-center">
+                    <span class="font-extrabold text-xl tracking-tight">{{ m.title }}</span>
+                    <button onclick="completar('{{m.id}}', 'mango')" class="w-12 h-12 bg-black/20 rounded-2xl flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
                     </button>
                 </div>
                 {% endfor %}
             </div>
             {% endif %}
 
-            <div class="grid gap-10">
+            <div class="space-y-10">
                 <section>
-                    <h3 class="text-[10px] font-black text-zinc-800 uppercase tracking-[0.4em] mb-4">Hábitos</h3>
+                    <h3 class="text-[10px] font-black text-zinc-800 uppercase tracking-[0.3em] mb-4 ml-2">Hábitos</h3>
                     <div class="space-y-3">
                         {% for h in habits %}
-                        <div id="item-{{h.id}}" class="card-glass p-6 flex justify-between items-center border-l-4 border-orange-600">
-                            <span class="font-bold">{{ h.title }}</span>
-                            <button onclick="completar('{{h.id}}', 'h')" class="w-6 h-6 rounded-full border-2 border-orange-500/30"></button>
+                        <div id="item-{{h.id}}" class="card-glass p-5 flex justify-between items-center">
+                            <span class="font-semibold text-zinc-200">{{ h.title }}</span>
+                            <button onclick="completar('{{h.id}}', 'h')" class="w-6 h-6 rounded-full border-2 border-orange-500/30 flex items-center justify-center">
+                                <div class="w-2 h-2 bg-orange-500 rounded-full"></div>
+                            </button>
                         </div>
                         {% endfor %}
                     </div>
                 </section>
 
                 <section>
-                    <h3 class="text-[10px] font-black text-zinc-800 uppercase tracking-[0.4em] mb-4">Tareas</h3>
+                    <h3 class="text-[10px] font-black text-zinc-800 uppercase tracking-[0.3em] mb-4 ml-2">Tareas</h3>
                     <div class="space-y-3">
                         {% for t in tasks %}
                         <div id="item-{{t.id}}" class="card-glass p-5 flex items-center">
-                            <input type="checkbox" onchange="completar('{{t.id}}', 't')" class="w-7 h-7 rounded-xl border-2 border-zinc-800 bg-transparent appearance-none checked:bg-blue-600 mr-5">
-                            <span class="font-bold text-zinc-400">{{ t.title }}</span>
+                            <input type="checkbox" onchange="completar('{{t.id}}', 't')" class="w-6 h-6 rounded-lg border-2 border-zinc-800 bg-transparent appearance-none checked:bg-blue-600 mr-4">
+                            <span class="font-semibold text-zinc-400">{{ t.title }}</span>
                         </div>
                         {% endfor %}
                     </div>
@@ -104,44 +104,63 @@
         </div>
     </div>
 
-    <script>
-        // Lógica de Barras
-        const b = document.getElementById('stats-data').dataset;
-        let s = { h: { d: parseInt(b.hd), t: parseInt(b.ht) }, t: { d: parseInt(b.td), t: parseInt(b.tt) } };
+    <div id="modal-historial" class="modal" onclick="cerrarModal()">
+        <div class="card-glass w-full max-w-xs p-6" onclick="event.stopPropagation()">
+            <h4 id="modal-titulo" class="text-xl font-black mb-4 uppercase tracking-tighter"></h4>
+            <div id="modal-lista" class="space-y-3 max-h-64 overflow-y-auto"></div>
+            <button onclick="cerrarModal()" class="w-full mt-6 py-3 bg-zinc-900 rounded-xl font-bold text-[10px] uppercase">Cerrar</button>
+        </div>
+    </div>
 
+    <script>
         function updateUI() {
+            const b = document.getElementById('stats-data').dataset;
+            const s = { h: {d: parseInt(b.hd), t: parseInt(b.ht)}, t: {d: parseInt(b.td), t: parseInt(b.tt)} };
             ['h', 't'].forEach(k => {
                 const p = s[k].t > 0 ? Math.round((s[k].d / s[k].t) * 100) : 0;
                 document.getElementById(`${k}-bar`).style.width = p + '%';
                 document.getElementById(`${k}-pct`).innerText = p + '%';
             });
-            document.getElementById('last-sync').innerText = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         }
 
         async function completar(id, tipo) {
             document.getElementById('item-'+id).classList.add('exit-anim');
-            if(s[tipo]) { s[tipo].d++; updateUI(); }
             await fetch('/complete/'+id, {method:'POST'});
-            setTimeout(() => document.getElementById('item-'+id).remove(), 500);
+            setTimeout(() => {
+                document.getElementById('item-'+id).remove();
+                // Opcional: Recargar stats tras completar
+            }, 400);
         }
 
-        // --- AUTO-REFRESCO (Cada 10 segundos revisa si hay cambios) ---
+        async function abrirHistorial(tipo) {
+            const list = document.getElementById('modal-lista');
+            document.getElementById('modal-titulo').innerText = tipo === 'habits' ? 'Log Hábitos' : 'Log Tareas';
+            document.getElementById('modal-historial').style.display = 'flex';
+            list.innerHTML = '<p class="text-zinc-600 text-xs">Cargando...</p>';
+            const res = await fetch('/api/history/'+tipo);
+            const data = await res.json();
+            list.innerHTML = data.map(i => `
+                <div class="flex justify-between p-3 bg-white/5 rounded-xl">
+                    <span class="text-xs font-bold text-zinc-400">${i.title}</span>
+                    <span class="text-[9px] text-zinc-600">${i.time}</span>
+                </div>
+            `).join('') || '<p class="text-zinc-600 text-xs">No hay datos hoy</p>';
+        }
+
+        function cerrarModal() { document.getElementById('modal-historial').style.display = 'none'; }
+
         setInterval(async () => {
-            // Solo refresca la página completa si el usuario no está tocando nada
-            // Esto asegura que lo que envíes por Telegram aparezca solo en el celular
             const res = await fetch(window.location.href);
             const html = await res.text();
             const parser = new DOMParser();
-            const newDoc = parser.parseFromString(html, 'text/html');
-            
-            // Actualizar solo el contenido de las listas
-            document.getElementById('main-content').innerHTML = newDoc.getElementById('main-content').innerHTML;
-            
-            // Actualizar los datos de las barras
-            const newB = newDoc.getElementById('stats-data').dataset;
-            s = { h: { d: parseInt(newB.hd), t: parseInt(newB.ht) }, t: { d: parseInt(newB.td), t: parseInt(newB.tt) } };
+            const doc = parser.parseFromString(html, 'text/html');
+            document.getElementById('content-refresh').innerHTML = doc.getElementById('content-refresh').innerHTML;
+            document.getElementById('stats-data').dataset.hd = doc.getElementById('stats-data').dataset.hd;
+            document.getElementById('stats-data').dataset.ht = doc.getElementById('stats-data').dataset.ht;
+            document.getElementById('stats-data').dataset.td = doc.getElementById('stats-data').dataset.td;
+            document.getElementById('stats-data').dataset.tt = doc.getElementById('stats-data').dataset.tt;
             updateUI();
-        }, 10000); 
+        }, 10000);
 
         window.onload = updateUI;
     </script>
