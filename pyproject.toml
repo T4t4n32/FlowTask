@@ -1,91 +1,38 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "flowtask"
 version = "0.1.0"
-description = "Asistente de calendario conversacional"
-readme = "README.md"
+description = "Sistema inteligente de gestión de tareas vía Telegram"
+authors = [{ name = "Tu Nombre", email = "tu@email.com" }]
 requires-python = ">=3.11"
-license = "MIT"
-authors = [
-    { name = "Tu Nombre", email = "tu@email.com" }
-]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: End Users/Desktop",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-]
-
 dependencies = [
-    "fastapi>=0.104.0",
-    "uvicorn[standard]>=0.24.0",
-    "python-telegram-bot>=20.0",
-    "firebase-admin>=6.2.0",
-    "python-dateutil>=2.8.0",
-    "pytz>=2023.3",
-    "pydantic>=2.0.0",
-    "requests>=2.31.0",
-    "dateparser>=1.1.0",
+    "fastapi",
+    "uvicorn",
+    "pydantic-settings",
+    "httpx",
+    "python-telegram-bot",
+    "firebase-admin",
+    "dateparser",
+    "python-jose[cryptography]",
+    "passlib[bcrypt]",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "black>=23.0",
-    "flake8>=6.0",
-    "isort>=5.12",
-    "pre-commit>=3.0",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+    "pre-commit",
 ]
 
-[tool.setuptools.packages.find]
-where = ["backend"]  # Busca paquetes dentro de la carpeta backend
-include = ["src*"]   # Incluye todo lo que empiece con src
-
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-version = ['py311']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  | \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | venv
-  | _build
-  | buck-out
-  | build
-  | dist
-)/
-'''
+target-version = "py311"
 
-[tool.isort]
-profile = "black"
-line_length = 88
-
-[tool.flake8]
-max-line-length = 88
-extend-ignore = "E203,W503"
-exclude = [
-  ".git",
-  "__pycache__",
-  ".venv",
-  "venv",
-  "build",
-  "dist",
-  "*.egg-info"
-]
-
-[tool.pytest.ini_options]
-testpaths = ["backend/tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = "-v --tb=short"
+[tool.ruff.lint] # Agrega esta línea
+select = ["E", "F", "W", "I", "B", "UP", "N"]
