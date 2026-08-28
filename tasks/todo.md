@@ -10,7 +10,7 @@ Comandos del repo:
 
 ## Fase 0: Fundaciones
 
-Progreso: [x] Task 1  ·  [ ] Task 2
+Progreso: [x] Task 1  ·  [~] Task 2 (código hecho; falta que TÚ crees Supabase/Railway)
 
 ### Task 1: Limpieza del repo y saneo de dependencias — HECHA (2026-08-28)
 
@@ -46,25 +46,30 @@ black, flake8, isort). Se reescriben en la Task 20, no aquí.
 
 ---
 
-### Task 2: Provisionar Supabase + Railway y centralizar configuración
+### Task 2: Provisionar Supabase + Railway y centralizar configuración — CÓDIGO HECHO (2026-08-28)
 
 **Description:** Crear el proyecto Supabase y el proyecto Railway. Un único módulo de settings que lea
 todas las variables de entorno (hoy están repartidas entre `main.py`, `ai_engine.py`, `database.py`).
 
 **Acceptance criteria:**
-- [ ] Proyecto Supabase creado; connection string del transaction pooler (6543) guardada como `DATABASE_URL`
-- [ ] Proyecto Railway creado y enlazado al repo; variables `DATABASE_URL`, `GEMINI_API_KEY`, `TELEGRAM_TOKEN` cargadas
-- [ ] `src/flowtask/config.py` expone un objeto `settings` con todas las claves; `main.py`/`ai_engine.py`/`database.py` lo importan en vez de `os.getenv` suelto
-- [ ] `.env.example` con todas las claves listadas
+- [x] `src/flowtask/config.py` expone `settings` (TELEGRAM_TOKEN, GEMINI_API_KEY, GEMINI_MODEL, DATABASE_URL); `main.py`/`ai_engine.py`/`database.py` lo importan en vez de `os.getenv` suelto
+- [x] `.env.example` con todas las claves y de dónde sacar cada una
+- [x] `database.py`: `check_same_thread` solo si es SQLite (no rompe con Postgres); `declarative_base` importado del sitio no-deprecado
+- [ ] **TÚ:** crear proyecto en Supabase → copiar la connection string del *Transaction pooler* (6543) y la contraseña → guardarlas en una nota. **NO ponerlas en `.env` todavía** (rompería la app hasta la Task 3, que instala el driver de Postgres). Por ahora `DATABASE_URL` se deja vacío = SQLite.
+- [ ] **TÚ:** crear el archivo `.env` (copia de `.env.example`) y rellenar `TELEGRAM_TOKEN` y `GEMINI_API_KEY`. `DATABASE_URL` vacío.
+- [ ] **TÚ:** crear proyecto en Railway (opcional ahora; también se puede dejar para la Task 19)
 
 **Verification:**
-- [ ] Manual: `python -c "from src.flowtask.config import settings; print(settings.DATABASE_URL[:20])"`
-- [ ] App arranca en local leyendo `.env`
+- [x] `python -c "from src.flowtask.config import settings; print(settings.DATABASE_URL)"` → `sqlite:///./flowtask.db`
+- [x] App arranca; `/dashboard` responde 200; sin errores en el log
+- [ ] **TÚ (tras crear el `.env`):** volver a arrancar y confirmar que sigue OK
 
 **Dependencies:** Task 1
 **Files likely touched:** `src/flowtask/config.py`, `src/flowtask/main.py`, `src/flowtask/infrastructure/ai_engine.py`, `src/flowtask/infrastructure/database.py`, `.env.example`
 **Estimated scope:** Small
 **Skills:** `use-railway`, `supabase-postgres-best-practices`
+**Nota:** el código no necesita la URL real de Supabase todavía — por defecto usa SQLite y todo
+funciona. La URL de Supabase entra en juego de verdad en la Task 3.
 
 ---
 

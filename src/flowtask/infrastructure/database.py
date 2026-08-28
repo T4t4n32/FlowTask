@@ -1,18 +1,15 @@
 import os
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-# --- DETECCIÓN DE ENTORNO PARA DB ---
-if os.getenv("RAILWAY_ENVIRONMENT"):
-    # En Railway usamos el volumen montado
-    DATABASE_URL = "sqlite:////app/data/flowtask.db"
-else:
-    # En tu PC usamos la ruta local
-    DATABASE_URL = "sqlite:///./flowtask.db"
+from ..config import settings
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+DATABASE_URL = settings.DATABASE_URL
+
+# check_same_thread es exclusivo de SQLite; en Postgres rompe.
+_connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(DATABASE_URL, connect_args=_connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -26,11 +23,12 @@ class TaskModel(Base):
     created_at = Column(DateTime, default=datetime.now)
 
 def init_db():
-    # Crea la carpeta /app/data si no existe (solo en Railway)
-    db_path = DATABASE_URL.replace("sqlite:///", "")
-    db_dir = os.path.dirname(db_path)
-    if db_dir and not os.path.exists(db_dir):
-        os.makedirs(db_dir, exist_ok=True)
+    # Si la BD es SQLite en una subcarpeta, crearla antes de conectar.
+    if DATABASE_URL.startswith("sqlite"):
+        db_path = DATABASE_URL.replace("sqlite:///", "").lstrip("/")
+        db_dir = os.path.dirname(db_path)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
     Base.metadata.create_all(bind=engine)
 
 def save_to_db(ai_res):

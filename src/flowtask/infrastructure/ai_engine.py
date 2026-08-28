@@ -1,12 +1,11 @@
-import os
 import json
 import httpx
 import logging
 from pydantic import BaseModel
-from typing import List, Optional
-from dotenv import load_dotenv
+from typing import List
 
-load_dotenv()
+from ..config import settings
+
 logger = logging.getLogger(__name__)
 
 class AIResponse(BaseModel):
@@ -19,8 +18,11 @@ class AIResponse(BaseModel):
 
 class AIEngine:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        self.url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.api_key}"
+        self.api_key = settings.GEMINI_API_KEY
+        self.url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{settings.GEMINI_MODEL}:generateContent?key={self.api_key}"
+        )
 
     def _manual_override(self, text: str, data: dict) -> dict:
         """

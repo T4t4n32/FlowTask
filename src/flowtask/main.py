@@ -8,7 +8,6 @@ from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
-from dotenv import load_dotenv
 
 # Configuración de Logs
 logging.basicConfig(level=logging.INFO)
@@ -18,10 +17,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
 sys.path.append(PROJECT_ROOT)
 
+from src.flowtask.config import settings
 from src.flowtask.infrastructure.ai_engine import AIEngine
 from src.flowtask.infrastructure.database import init_db, SessionLocal, TaskModel, save_to_db
-
-load_dotenv(dotenv_path=os.path.join(PROJECT_ROOT, ".env"))
 
 app = FastAPI()
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
@@ -30,8 +28,7 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 init_db()
 ai_engine = AIEngine()
 
-TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
-TELEGRAM_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+TELEGRAM_URL = f"https://api.telegram.org/bot{settings.TELEGRAM_TOKEN}/sendMessage"
 
 async def send_msg(chat_id: int, text: str):
     """Envía mensajes a Telegram."""
