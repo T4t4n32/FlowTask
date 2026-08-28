@@ -1,0 +1,515 @@
+# FlowTask — Task List
+
+Comandos del repo:
+- Tests: `pytest tests/ -q`
+- Lint: `ruff check .`
+- Run local: `uvicorn src.flowtask.main:app --reload`
+- Migraciones: `alembic upgrade head`
+
+---
+
+## Fase 0: Fundaciones
+
+Progreso: [x] Task 1  ·  [ ] Task 2
+
+### Task 1: Limpieza del repo y saneo de dependencias — HECHA (2026-08-28)
+
+**Description:** Aplicar la auditoría ponytail: borrar el scaffold clean-architecture muerto y dejar
+`requirements.txt` / `pyproject.toml` con lo que realmente se usa, para no arrastrar peso a las fases
+siguientes.
+
+**Acceptance criteria:**
+- [x] Borrados `src/flowtask/{api,core,domain}/`, `infrastructure/firebase.py`, `infrastructure/telegram.py`, `verify_db.py`, `verify_flow.py`, `test_ia.py`, `Makefile`
+- [x] `requirements.txt` reducido a lo que hoy se importa: fastapi, uvicorn, httpx, pydantic, sqlalchemy, jinja2, python-dotenv. Las deps de fases futuras (apscheduler, alembic, psycopg, dateparser) las añade la task que las use.
+- [x] `pyproject.toml` sin `python-jose`, `passlib`, `firebase-admin`, `python-telegram-bot`, `pydantic-settings`, `dateparser`
+- [x] `.gitignore`: `.agents/` y `.claude/skills/` (skills se instalan por máquina, no se versionan)
+- [x] Verificado por análisis estático: todo `import` en el código vivo resuelve a stdlib, a las 7 deps declaradas o al paquete local
+
+**Verification:**
+- [x] `venv` creado + `pip install -r requirements.txt` OK (Python 3.14, todas las libs con wheel)
+- [x] `python -c "from src.flowtask.main import app"` importa sin error (8 rutas)
+- [x] `uvicorn src.flowtask.main:app` arranca: "Application startup complete"
+- [x] `GET /dashboard` responde 200 y renderiza (`<title>FlowTask OS</title>`, "AGOSTO", "Hábitos")
+- [ ] PENDIENTE (necesita webhook público): mensaje real de Telegram end-to-end
+- [ ] `ruff check .` — no instalado; se cubre en Task 20
+
+**Bug encontrado y arreglado durante la verificación:** `main.py` usaba la firma vieja
+`templates.TemplateResponse("dashboard.html", {...})`, que la versión actual de Starlette ya no acepta
+(rompía con error 500). Cambiado a la firma nueva `TemplateResponse(request, "dashboard.html", {...})`.
+No lo causó la limpieza; salió a la luz al reinstalar deps sin pinear.
+
+**Dependencies:** None
+**Files likely touched:** `requirements.txt`, `pyproject.toml`, `.gitignore`, `src/flowtask/main.py`, (borrados)
+**Estimated scope:** Small
+**Nota:** `.github/workflows/ci.yml` y `.pre-commit-config.yaml` siguen rotos (referencian `backend/src`,
+black, flake8, isort). Se reescriben en la Task 20, no aquí.
+
+---
+
+### Task 2: Provisionar Supabase + Railway y centralizar configuración
+
+**Description:** Crear el proyecto Supabase y el proyecto Railway. Un único módulo de settings que lea
+todas las variables de entorno (hoy están repartidas entre `main.py`, `ai_engine.py`, `database.py`).
+
+**Acceptance criteria:**
+- [ ] Proyecto Supabase creado; connection string del transaction pooler (6543) guardada como `DATABASE_URL`
+- [ ] Proyecto Railway creado y enlazado al repo; variables `DATABASE_URL`, `GEMINI_API_KEY`, `TELEGRAM_TOKEN` cargadas
+- [ ] `src/flowtask/config.py` expone un objeto `settings` con todas las claves; `main.py`/`ai_engine.py`/`database.py` lo importan en vez de `os.getenv` suelto
+- [ ] `.env.example` con todas las claves listadas
+
+**Verification:**
+- [ ] Manual: `python -c "from src.flowtask.config import settings; print(settings.DATABASE_URL[:20])"`
+- [ ] App arranca en local leyendo `.env`
+
+**Dependencies:** Task 1
+**Files likely touched:** `src/flowtask/config.py`, `src/flowtask/main.py`, `src/flowtask/infrastructure/ai_engine.py`, `src/flowtask/infrastructure/database.py`, `.env.example`
+**Estimated scope:** Small
+**Skills:** `use-railway`, `supabase-postgres-best-practices`
+
+---
+
+## Fase 1: Postgres multiusuario + equipos
+
+### Task 3: Migrar SQLAlchemy de SQLite a Supabase Postgres + Alembic
+
+**Description:** Cambiar el engine a Postgres, añadir `psycopg`, introducir Alembic y crear la
+migración inicial que reproduce el `tasks` actual. Sin cambios de comportamiento todavía.
+
+**Acceptance criteria:**
+- [ ] `database.py` usa `DATABASE_URL` de settings; `pool_pre_ping=True`, `pool_size` acotado
+- [ ] `alembic init` hecho; migración `0001_initial` crea `tasks` con las columnas actuales
+- [ ] `init_db()` reemplazado por `alembic upgrade head` (documentado en README)
+- [ ] `alembic upgrade head` corre limpio contra Supabase
+
+**Verification:**
+- [ ] Manual: mandar un mensaje al bot, ver la fila en el Table Editor de Supabase
+- [ ] `alembic downgrade base && alembic upgrade head` sin error
+
+**Dependencies:** Task 2
+**Files likely touched:** `src/flowtask/infrastructure/database.py`, `alembic.ini`, `migrations/versions/0001_initial.py`, `README.md`
+**Estimated scope:** Medium
+**Skills:** `supabase-postgres-best-practices`
+
+---
+
+### Task 4: Multiusuario — `users`, `tasks.user_id`, aislamiento en todas las queries
+
+**Description:** Añadir tabla `users` (id, platform, chat_id, display_name, created_at; único por
+`(platform, chat_id)`). En cada mensaje entrante, upsert del usuario. `tasks.user_id` FK NOT NULL.
+**Toda** query de `main.py` (`get_pending_tasks_summary`, `view_dashboard`, `get_history`,
+`action_complete`) pasa a filtrar por `user_id`.
+
+**Acceptance criteria:**
+- [ ] Migración `0002`: tabla `users` + `tasks.user_id` FK + índice `(user_id, created_at)`
+- [ ] `get_or_create_user(platform, chat_id)` usado en el webhook antes de clasificar
+- [ ] `save_to_db` recibe y guarda `user_id`; ninguna query de tareas sin `.filter(TaskModel.user_id == ...)`
+- [ ] `action_complete` verifica que la tarea pertenece al usuario que la completa
+
+**Verification:**
+- [ ] Test `pytest`: dos usuarios distintos, cada uno solo ve sus tareas
+- [ ] Manual: dos cuentas de Telegram, `/list` no se cruzan
+
+**Dependencies:** Task 3
+**Files likely touched:** `src/flowtask/infrastructure/database.py`, `src/flowtask/main.py`, `migrations/versions/0002_users.py`, `tests/test_isolation.py`
+**Estimated scope:** Medium
+**Skills:** `supabase-postgres-best-practices`, `pytest`
+
+---
+
+### Task 5: Equipos — `teams`, `team_members`, `tasks.team_id`, `tasks.assignee_id`
+
+**Description:** Modelo de equipos: `teams` (id, name, owner_id), `team_members` (team_id, user_id,
+role). `tasks` gana `team_id` NULL y `assignee_id` NULL. Comandos de chat `/equipo crear <nombre>`,
+`/equipo invitar <código>`, `/equipo listar`.
+
+**Acceptance criteria:**
+- [ ] Migración `0003`: `teams`, `team_members` (PK compuesta), `tasks.team_id`, `tasks.assignee_id`
+- [ ] Un usuario puede crear un equipo, generar un código de invitación y otro unirse con él
+- [ ] `/list` puede mostrar "mis tareas" y "tareas del equipo <nombre>"
+- [ ] Al completar una tarea de equipo se notifica al `owner_id` del equipo
+
+**Verification:**
+- [ ] Test `pytest`: crear equipo, unir 2 miembros, asignar tarea, el asignado la ve
+- [ ] Manual: flujo de invitación completo entre dos cuentas
+
+**Dependencies:** Task 4
+**Files likely touched:** `src/flowtask/infrastructure/database.py`, `src/flowtask/main.py`, `src/flowtask/teams.py`, `migrations/versions/0003_teams.py`, `tests/test_teams.py`
+**Estimated scope:** Medium
+
+---
+
+### Task 6: Políticas RLS en Supabase + tests de aislamiento
+
+**Description:** Activar RLS en `tasks`, `users`, `teams`, `team_members` como defensa en profundidad.
+Políticas: el dueño ve lo suyo; miembros de equipo ven tareas con su `team_id`. Tests que las verifican
+con un rol anon/authenticated.
+
+**Acceptance criteria:**
+- [ ] `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` en las 4 tablas vía migración
+- [ ] Políticas `select`/`insert`/`update` por `auth.uid()` y pertenencia a equipo
+- [ ] La conexión del backend (service role) sigue funcionando; documentado que bypassa RLS a propósito
+- [ ] Tests SQL: un usuario B no puede leer filas del usuario A vía rol authenticated
+
+**Verification:**
+- [ ] Suite de tests de RLS pasa (patrón de la skill de Supabase)
+- [ ] Manual: query con JWT de B contra datos de A devuelve 0 filas
+
+**Dependencies:** Task 5
+**Files likely touched:** `migrations/versions/0004_rls.py`, `tests/rls/`, `README.md`
+**Estimated scope:** Medium
+**Skills:** `supabase-postgres-best-practices`
+
+### Checkpoint: Fase 1
+- [ ] `pytest tests/ -q` verde
+- [ ] `alembic upgrade head` limpio desde cero
+- [ ] Dos usuarios reales de Telegram no ven las tareas del otro
+- [ ] Flujo de equipo (crear / invitar / asignar) funciona end-to-end
+- [ ] Revisión con humano antes de seguir
+
+---
+
+## Fase 2: Fechas naturales + recordatorios
+
+### Task 7: Parser de fecha/hora en español + `due_at` / `reminder_sent`
+
+**Description:** Wire de `dateparser` (ya en requirements). Helper `parse_when(text) -> datetime | None`
+con `languages=['es']`, `PREFER_DATES_FROM='future'`. `tasks` gana `due_at` (timestamptz NULL) y
+`reminder_sent` (bool default false). Al guardar, se extrae `due_at` y se limpia del título. El bot
+confirma la fecha interpretada en su respuesta.
+
+**Acceptance criteria:**
+- [ ] Migración `0005`: `tasks.due_at`, `tasks.reminder_sent`
+- [ ] `parse_when("mañana a las 10")`, `"el viernes 4pm"`, `"en 2 horas"` devuelven el datetime correcto
+- [ ] Mensaje sin fecha → `due_at = NULL`, sin romper el flujo actual
+- [ ] La respuesta del bot incluye "⏰ para el <fecha> <hora>" cuando hay `due_at`
+
+**Verification:**
+- [ ] Test `pytest` parametrizado sobre `parse_when` con casos es-ES
+- [ ] Manual: "Pagar luz mañana 9am" guarda `due_at` correcto y lo confirma
+
+**Dependencies:** Task 4
+**Files likely touched:** `src/flowtask/nlp.py`, `src/flowtask/infrastructure/ai_engine.py`, `src/flowtask/infrastructure/database.py`, `src/flowtask/main.py`, `migrations/versions/0005_due_at.py`, `tests/test_nlp.py`
+**Estimated scope:** Medium
+**Skills:** `pytest`
+
+---
+
+### Task 8: `AsyncIOScheduler` con jobstore en Postgres + barrido de recordatorios
+
+**Description:** Al `startup` de FastAPI se arranca un `AsyncIOScheduler` con `SQLAlchemyJobStore`
+apuntando a `DATABASE_URL`. Un job cada 60 s: selecciona `tasks WHERE due_at <= now() AND
+reminder_sent = false AND completed = false`, envía el recordatorio al chat del usuario y marca
+`reminder_sent = true`.
+
+**Acceptance criteria:**
+- [ ] Scheduler arranca en `startup` y se apaga limpio en `shutdown`
+- [ ] Job `reminder_sweep` registrado con `id` fijo y `replace_existing=True` (no se duplica al reiniciar)
+- [ ] El recordatorio usa el `send_message` correcto según `platform` del usuario
+- [ ] `pg_advisory_lock` (o `max_instances=1`) evita solape del barrido
+- [ ] Marca `reminder_sent` en la misma transacción que el envío exitoso
+
+**Verification:**
+- [ ] Test `pytest`: crear tarea con `due_at` en el pasado, correr el sweep una vez, assert de que se llamó a `send_message` y `reminder_sent=true`
+- [ ] Manual: crear tarea "test en 2 minutos", esperar, llega el mensaje
+
+**Dependencies:** Task 7
+**Files likely touched:** `src/flowtask/scheduler.py`, `src/flowtask/main.py`, `requirements.txt`, `tests/test_scheduler.py`
+**Estimated scope:** Medium
+**Skills:** `cron-scheduling`, `reminder-scheduler`
+
+---
+
+### Task 9: Hábitos recurrentes diarios + hora visible en `/list` y dashboard
+
+**Description:** Un job diario a las 00:05 que, por cada `HABIT` activo, crea la instancia del día con
+su `due_at` (hora fijada al crear el hábito). `/list` y el dashboard muestran la hora de cada tarea y
+ordenan por `due_at`.
+
+**Acceptance criteria:**
+- [ ] `tasks` (o tabla `habits`) guarda la hora objetivo del hábito y su estado activo
+- [ ] Job `habit_rollover` genera las instancias del día sin duplicar si ya existen
+- [ ] `get_pending_tasks_summary` ordena por `due_at` y muestra `HH:MM`
+- [ ] Dashboard muestra la hora junto a cada ítem
+
+**Verification:**
+- [ ] Test `pytest`: correr `habit_rollover` dos veces el mismo día no duplica
+- [ ] Manual: crear hábito "leer 15 min a las 17:00", al día siguiente aparece con recordatorio
+
+**Dependencies:** Task 8
+**Files likely touched:** `src/flowtask/scheduler.py`, `src/flowtask/main.py`, `src/flowtask/templates/dashboard.html`, `migrations/versions/0006_habits.py`, `tests/test_habits.py`
+**Estimated scope:** Medium
+
+### Checkpoint: Fase 2
+- [ ] `pytest tests/ -q` verde
+- [ ] Un recordatorio real llega al chat a la hora fijada
+- [ ] Un hábito recurrente se regenera y recuerda al día siguiente
+- [ ] Revisión con humano
+
+---
+
+## Fase 3: Preparar multi-canal (sin coste)
+
+### Task 10: Refactor a núcleo agnóstico de plataforma
+
+**Description:** Extraer del `telegram_webhook` toda la lógica no-Telegram a
+`handle_incoming_message(platform, chat_id, text) -> reply_text`. Crear dispatcher
+`send_message(platform, chat_id, text)` que hoy solo enruta a Telegram. El endpoint de Telegram queda
+como adaptador fino (parseo del payload + llamada al núcleo).
+
+**Acceptance criteria:**
+- [ ] `handle_incoming_message` no importa nada específico de Telegram
+- [ ] `send_message` decide el transporte por `platform`
+- [ ] El webhook de Telegram sigue pasando todos los tests y el flujo manual
+- [ ] `background_tasks` sigue usándose para no bloquear el webhook
+
+**Verification:**
+- [ ] Todos los tests previos siguen verdes sin cambios de assert
+- [ ] Manual: Telegram funciona idéntico
+
+**Dependencies:** Task 8
+**Files likely touched:** `src/flowtask/main.py`, `src/flowtask/messaging.py`, `tests/test_handler.py`
+**Estimated scope:** Medium
+
+---
+
+### Task 11: Integración WhatsApp — DIFERIDA
+
+**Estado:** aparcada. Motivo: WhatsApp (Kapso o Meta Cloud API) implica trámites y/o mensualidad. El
+proyecto usa **solo Telegram** hasta que se publique. Gracias a la Task 10, retomarlo será añadir un
+adaptador `whatsapp.py` + endpoint `/webhook/whatsapp`, sin tocar la lógica.
+
+**Skills para cuando se retome:** `integrate-whatsapp`
+
+### Checkpoint: Fase 3
+- [ ] `pytest tests/ -q` verde
+- [ ] Telegram sigue funcionando idéntico tras el refactor
+- [ ] Añadir un canal nuevo es solo un archivo adaptador (verificado leyendo el código, sin implementarlo)
+- [ ] Revisión con humano
+
+---
+
+## Fase 4: Descomposición de metas/proyectos
+
+### Task 12: Tabla `projects` + `ai_engine.decompose_goal()`
+
+**Description:** `projects` (id, user_id, team_id NULL, title, rubric TEXT, deadline DATE, created_at).
+`tasks.project_id` NULL FK. Nueva función `decompose_goal(goal, rubric, deadline) -> list[GeneratedTask]`
+que llama a Gemini y devuelve tareas con título, `due_at` sugerido y nota de por qué. Prompt que exige
+JSON y reparte el trabajo entre hoy y `deadline` sin dejar todo para el final.
+
+**Acceptance criteria:**
+- [ ] Migración `0007`: `projects` + `tasks.project_id`
+- [ ] `decompose_goal` devuelve entre 3 y N tareas, todas con `due_at` <= `deadline` y >= hoy
+- [ ] Maneja fallo de la IA con un fallback (p.ej. dividir el rango en hitos semanales)
+- [ ] El JSON de la IA se valida con Pydantic antes de persistir
+
+**Verification:**
+- [ ] Test `pytest` con la llamada a Gemini mockeada: JSON válido → N filas `tasks` con `project_id`
+- [ ] Manual: meta "Presentación de Historia para el 15/09, rúbrica: fuentes primarias, 10 min" genera un plan coherente
+
+**Dependencies:** Task 5, Task 7
+**Files likely touched:** `src/flowtask/infrastructure/ai_engine.py`, `src/flowtask/infrastructure/database.py`, `src/flowtask/projects.py`, `migrations/versions/0007_projects.py`, `tests/test_decompose.py`
+**Estimated scope:** Medium
+**Skills:** `pytest`
+
+---
+
+### Task 13: Flujo de chat para crear un proyecto
+
+**Description:** Comando `/proyecto` que abre una mini-conversación (meta → rúbrica → fecha límite) o
+acepta todo en un mensaje. Al confirmar, llama a `decompose_goal`, persiste el `project` y sus tareas,
+y devuelve el plan resumido. El usuario puede aceptar o pedir regenerar.
+
+**Acceptance criteria:**
+- [ ] Estado de conversación por `(platform, chat_id)` para las preguntas de seguimiento
+- [ ] "Aceptar" persiste las tareas; "regenerar" vuelve a llamar a la IA sin duplicar
+- [ ] Las tareas generadas entran en el barrido de recordatorios de Fase 2 automáticamente
+- [ ] `/proyectos` lista los proyectos del usuario y su progreso (hechas / total)
+
+**Verification:**
+- [ ] Test `pytest`: máquina de estados del flujo (mensajes simulados en orden)
+- [ ] Manual: crear un proyecto por chat, ver que llegan recordatorios los días siguientes
+
+**Dependencies:** Task 12
+**Files likely touched:** `src/flowtask/main.py`, `src/flowtask/projects.py`, `src/flowtask/convo_state.py`, `tests/test_project_flow.py`
+**Estimated scope:** Medium
+
+---
+
+### Task 14: Reparto de tareas generadas entre el equipo
+
+**Description:** Si el proyecto tiene `team_id`, al persistir las tareas se reparten entre los
+`team_members` (round-robin, o por carga actual = nº de tareas pendientes). Cada asignado recibe un
+mensaje con sus tareas.
+
+**Acceptance criteria:**
+- [ ] Proyecto de equipo → cada tarea generada tiene `assignee_id` de un miembro
+- [ ] Reparto balancea por nº de tareas pendientes del miembro, no puro round-robin
+- [ ] Cada miembro recibe una notificación con su parte
+- [ ] `/proyectos` muestra el desglose por persona
+
+**Verification:**
+- [ ] Test `pytest`: proyecto de equipo con 3 miembros y 9 tareas → 3 cada uno
+- [ ] Manual: crear proyecto de equipo, los 3 reciben su mensaje
+
+**Dependencies:** Task 13
+**Files likely touched:** `src/flowtask/projects.py`, `src/flowtask/teams.py`, `tests/test_distribution.py`
+**Estimated scope:** Small
+
+### Checkpoint: Fase 4
+- [ ] `pytest tests/ -q` verde
+- [ ] Una meta con rúbrica genera tareas diarias con fecha
+- [ ] En un proyecto de equipo el trabajo queda repartido y notificado
+- [ ] Revisión con humano
+
+---
+
+## Fase 5: App móvil (Expo / React Native)
+
+### Task 15: Scaffold Expo + login Supabase Auth + vinculación de cuenta de chat
+
+**Description:** App Expo nueva en `mobile/`. Login con Supabase Auth (email/OTP). Pantalla para
+introducir el código de vinculación que el bot envía por chat, que asocia `auth.uid` a la fila `users`.
+Endpoint API `POST /link` que valida el código.
+
+**Acceptance criteria:**
+- [ ] `mobile/` arranca en simulador iOS y emulador Android (workflow de la skill argent)
+- [ ] Login con Supabase Auth funciona; sesión persiste entre reinicios
+- [ ] `/vincular` en el bot genera un código de un solo uso con expiración
+- [ ] Introducir el código en la app enlaza la cuenta; `users.auth_uid` queda seteado
+
+**Verification:**
+- [ ] Manual: login + vinculación end-to-end en un dispositivo
+- [ ] Test `pytest` del endpoint `/link` (código válido / caducado / usado)
+
+**Dependencies:** Task 4
+**Files likely touched:** `mobile/` (proyecto nuevo), `src/flowtask/main.py`, `src/flowtask/auth_link.py`, `migrations/versions/0008_auth_uid.py`, `tests/test_link.py`
+**Estimated scope:** Large
+**Skills:** `argent-react-native-app-workflow`, `supabase-postgres-best-practices`
+
+---
+
+### Task 16: Pantalla "Hoy" — listar y completar tareas
+
+**Description:** Endpoints REST `GET /api/tasks?date=` y `POST /api/tasks/{id}/complete` autenticados
+con el JWT de Supabase (dependencia FastAPI que verifica el token y resuelve `user_id`). Pantalla que
+lista las tareas del día agrupadas (MANGO / HÁBITOS / TAREAS) y permite marcarlas.
+
+**Acceptance criteria:**
+- [ ] Dependencia `get_current_user` que valida el JWT de Supabase y devuelve la fila `users`
+- [ ] `GET /api/tasks` devuelve solo tareas del usuario autenticado, con `due_at`
+- [ ] Completar en la app refleja en DB y desaparece de la lista
+- [ ] Estados de carga / error / vacío en la pantalla
+
+**Verification:**
+- [ ] Test `pytest`: `GET /api/tasks` con JWT de A no devuelve tareas de B
+- [ ] Manual: completar una tarea en la app, verla completada en el dashboard web
+
+**Dependencies:** Task 15
+**Files likely touched:** `src/flowtask/api.py`, `src/flowtask/main.py`, `mobile/src/screens/Today.tsx`, `mobile/src/api.ts`, `tests/test_api_tasks.py`
+**Estimated scope:** Medium
+
+---
+
+### Task 17: Pantalla "Proyectos"
+
+**Description:** `GET /api/projects` y `GET /api/projects/{id}` (con sus tareas y progreso). Pantalla
+lista de proyectos + detalle con la línea de tiempo de tareas y, si es de equipo, el reparto por persona.
+
+**Acceptance criteria:**
+- [ ] Endpoints devuelven proyectos del usuario (propios + de sus equipos)
+- [ ] Detalle muestra tareas ordenadas por `due_at` con estado
+- [ ] Proyecto de equipo muestra el asignado de cada tarea
+- [ ] Pull-to-refresh
+
+**Verification:**
+- [ ] Test `pytest` de los endpoints (aislamiento + forma del payload)
+- [ ] Manual: crear proyecto por chat, verlo en la app con su progreso
+
+**Dependencies:** Task 16, Task 13
+**Files likely touched:** `src/flowtask/api.py`, `mobile/src/screens/Projects.tsx`, `mobile/src/screens/ProjectDetail.tsx`, `tests/test_api_projects.py`
+**Estimated scope:** Medium
+
+---
+
+### Task 18: Push con `expo-notifications`
+
+**Description:** Tabla `device_tokens` (user_id, expo_push_token, platform, updated_at). La app registra
+su token al abrir. El barrido de recordatorios (Task 8), además del mensaje de chat, envía push a los
+tokens del usuario vía la API de Expo Push.
+
+**Acceptance criteria:**
+- [ ] Migración `0009`: `device_tokens` único por token
+- [ ] `POST /api/devices` guarda/renueva el token del usuario autenticado
+- [ ] El sweep envía push a Expo además del mensaje de chat, sin duplicar si el envío de chat falla
+- [ ] Tocar la push abre la tarea correspondiente (deep link)
+
+**Verification:**
+- [ ] Test `pytest`: sweep con un `device_token` registrado llama al cliente de Expo Push
+- [ ] Manual: tarea "test 2 min", llega push al dispositivo y abre la tarea
+
+**Dependencies:** Task 16, Task 8
+**Files likely touched:** `src/flowtask/scheduler.py`, `src/flowtask/api.py`, `src/flowtask/push.py`, `mobile/src/push.ts`, `migrations/versions/0009_device_tokens.py`, `tests/test_push.py`
+**Estimated scope:** Medium
+**Skills:** `capacitor-push-notifications` (solo como referencia FCM; el envío real es Expo Push)
+
+### Checkpoint: Fase 5
+- [ ] `pytest tests/ -q` verde
+- [ ] App: login, vinculación, listar/completar tareas y ver proyectos
+- [ ] Recordatorio llega como push al móvil
+- [ ] Revisión con humano
+
+---
+
+## Fase 6: Deploy y calidad
+
+### Task 19: Deploy en Railway (web + scheduler)
+
+**Description:** `Procfile` / config de Railway para el proceso web con el scheduler embebido. Todas las
+env vars cargadas. Pooler de Supabase (6543). Healthcheck. `alembic upgrade head` en el release.
+
+**Acceptance criteria:**
+- [ ] Deploy en Railway sirve el webhook con HTTPS y URL estable
+- [ ] Webhook de Telegram apuntando a la URL de Railway
+- [ ] `alembic upgrade head` corre en cada release (release command / pre-deploy)
+- [ ] Una sola réplica; documentado el paso a worker aparte si se escala
+- [ ] Healthcheck `/health` que verifica DB y scheduler vivo
+
+**Verification:**
+- [ ] Manual: mensaje real por Telegram contra producción, con recordatorio a la hora fijada
+- [ ] Logs de Railway sin errores de conexión a Supabase
+
+**Dependencies:** Task 18
+**Files likely touched:** `Procfile`, `railway.json`/`railway.toml`, `src/flowtask/main.py`, `README.md`
+**Estimated scope:** Small
+**Skills:** `use-railway`
+
+---
+
+### Task 20: Suite `pytest` + reescritura del `ci.yml`
+
+**Description:** Consolidar los tests de todas las fases bajo `tests/` con `pytest` + `pytest-asyncio`.
+`conftest.py` con una DB Postgres de test (contenedor o schema efímero) y fixtures de usuario/equipo.
+Reescribir `.github/workflows/ci.yml` para: `ruff check`, `alembic upgrade head` contra DB de test,
+`pytest --cov`.
+
+**Acceptance criteria:**
+- [ ] `pytest tests/ -q` corre toda la suite en local y en CI
+- [ ] `ci.yml` sin referencias a `backend/src`, `black`, `flake8`, `isort`, gitleaks inexistente
+- [ ] CI verde en un PR de prueba
+- [ ] Cobertura reportada (sin umbral que rompa el build al principio)
+
+**Verification:**
+- [ ] PR de prueba → checks de CI en verde
+- [ ] `ruff check .` limpio
+
+**Dependencies:** Task 19
+**Files likely touched:** `.github/workflows/ci.yml`, `tests/conftest.py`, `pyproject.toml`, `tests/**`
+**Estimated scope:** Medium
+**Skills:** `pytest`
+
+### Checkpoint: Fase 6 (Completo)
+- [ ] Todos los criterios de aceptación cumplidos
+- [ ] CI verde, desplegado en Railway, datos en Supabase
+- [ ] Telegram + WhatsApp + app móvil operativos con recordatorios y proyectos
+- [ ] Revisión final con humano

@@ -6,28 +6,23 @@ build-backend = "setuptools.build_meta"
 name = "flowtask"
 version = "0.1.0"
 description = "Sistema inteligente de gestión de tareas vía Telegram"
-authors = [{ name = "Tu Nombre", email = "tu@email.com" }]
+authors = [{ name = "histsoluciones", email = "histsoluciones@gmail.com" }]
 requires-python = ">=3.11"
 dependencies = [
     "fastapi",
     "uvicorn",
-    "pydantic-settings",
     "httpx",
-    "python-telegram-bot",
-    "firebase-admin",
-    "dateparser",
-    "python-jose[cryptography]",
-    "passlib[bcrypt]",
+    "pydantic",
+    "sqlalchemy",
+    "jinja2",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
     "pytest-asyncio",
-    "pytest-cov",
     "ruff",
-    "mypy",
-    "pre-commit",
 ]
 
 [tool.ruff]

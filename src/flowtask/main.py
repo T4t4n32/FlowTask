@@ -102,8 +102,7 @@ async def view_dashboard(request: Request, date_param: Optional[str] = None):
 
         meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
 
-        return templates.TemplateResponse("dashboard.html", {
-            "request": request,
+        return templates.TemplateResponse(request, "dashboard.html", {
             "dia_num": target_date.day,
             "mes_txt": meses[target_date.month-1],
             "current_date_iso": target_date.isoformat(),

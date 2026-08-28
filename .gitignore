@@ -96,3 +96,7 @@ secure_credentials/
 *.key
 *.pem
 *.json
+
+# Agent skills (instaladas por máquina con `npx skills add`, no se versionan)
+.agents/
+.claude/skills/
