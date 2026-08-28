@@ -100,3 +100,8 @@ secure_credentials/
 # Agent skills (instaladas por máquina con `npx skills add`, no se versionan)
 .agents/
 .claude/skills/
+
+# Notas locales con credenciales (NUNCA subir)
+database.txt
+credenciales.txt
+secretos.txt
