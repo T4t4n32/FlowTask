@@ -75,23 +75,30 @@ funciona. La URL de Supabase entra en juego de verdad en la Task 3.
 
 ## Fase 1: Postgres multiusuario + equipos
 
-### Task 3: Migrar SQLAlchemy de SQLite a Supabase Postgres + Alembic
+Progreso: [~] Task 3 (código hecho; falta que TÚ pruebes contra Supabase)  ·  [ ] Task 4  ·  [ ] Task 5  ·  [ ] Task 6
+
+### Task 3: Migrar SQLAlchemy de SQLite a Supabase Postgres + Alembic — CÓDIGO HECHO (2026-08-28)
 
 **Description:** Cambiar el engine a Postgres, añadir `psycopg`, introducir Alembic y crear la
 migración inicial que reproduce el `tasks` actual. Sin cambios de comportamiento todavía.
 
 **Acceptance criteria:**
-- [ ] `database.py` usa `DATABASE_URL` de settings; `pool_pre_ping=True`, `pool_size` acotado
-- [ ] `alembic init` hecho; migración `0001_initial` crea `tasks` con las columnas actuales
-- [ ] `init_db()` reemplazado por `alembic upgrade head` (documentado en README)
-- [ ] `alembic upgrade head` corre limpio contra Supabase
+- [x] `database.py`: normaliza `postgresql://` → `postgresql+psycopg://`; SQLite mantiene `check_same_thread`; Postgres usa `pool_pre_ping=True`, `pool_size=5`, `max_overflow=2`, `prepare_threshold=None` (compatible con el transaction pooler de Supabase)
+- [x] `alembic init migrations` hecho; `migrations/env.py` toma la URL de `settings` y `Base.metadata`; `alembic.ini` con `sqlalchemy.url` vacío
+- [x] Migración `0001_initial` crea `tasks` con las mismas columnas + índice `ix_tasks_id`
+- [x] `init_db()` ahora llama a `alembic upgrade head` (documentado en README, sección "Puesta en marcha")
+- [x] `alembic check` → "No new upgrade operations detected" (modelo y migración en sync)
+- [ ] **TÚ:** `alembic upgrade head` contra Supabase (ver Verificación)
 
 **Verification:**
-- [ ] Manual: mandar un mensaje al bot, ver la fila en el Table Editor de Supabase
-- [ ] `alembic downgrade base && alembic upgrade head` sin error
+- [x] `alembic upgrade head` / `downgrade base` / `upgrade head` en bucle: sin error (SQLite local)
+- [x] App arranca; `init_db()` aplica la migración; `/dashboard` → 200
+- [ ] **TÚ:** poner la cadena del pooler en `.env` como `DATABASE_URL`, correr
+      `venv\Scripts\alembic upgrade head`, y ver la tabla `tasks` en el Table Editor de Supabase.
+      Luego mandar un mensaje al bot y ver la fila aparecer.
 
 **Dependencies:** Task 2
-**Files likely touched:** `src/flowtask/infrastructure/database.py`, `alembic.ini`, `migrations/versions/0001_initial.py`, `README.md`
+**Files likely touched:** `src/flowtask/infrastructure/database.py`, `alembic.ini`, `migrations/` (env.py, script.py.mako, versions/0001_initial.py), `README.md`, `requirements.txt`, `pyproject.toml`
 **Estimated scope:** Medium
 **Skills:** `supabase-postgres-best-practices`
 

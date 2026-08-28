@@ -1,17 +1,36 @@
-import os
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
+from pathlib import Path
+
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from ..config import settings
 
+# Supabase entrega la URL como "postgresql://..."; SQLAlchemy necesita el driver explícito.
 DATABASE_URL = settings.DATABASE_URL
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
-# check_same_thread es exclusivo de SQLite; en Postgres rompe.
-_connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=_connect_args)
+_IS_SQLITE = DATABASE_URL.startswith("sqlite")
+
+if _IS_SQLITE:
+    _engine_kwargs = {"connect_args": {"check_same_thread": False}}
+else:
+    # Transaction pooler de Supabase (puerto 6543): sin prepared statements con nombre,
+    # pool chico para no agotar el límite de conexiones.
+    _engine_kwargs = {
+        "pool_pre_ping": True,
+        "pool_size": 5,
+        "max_overflow": 2,
+        "connect_args": {"prepare_threshold": None},
+    }
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+_ROOT = Path(__file__).resolve().parents[3]
+
 
 class TaskModel(Base):
     __tablename__ = "tasks"
@@ -22,14 +41,17 @@ class TaskModel(Base):
     completed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.now)
 
+
 def init_db():
-    # Si la BD es SQLite en una subcarpeta, crearla antes de conectar.
-    if DATABASE_URL.startswith("sqlite"):
-        db_path = DATABASE_URL.replace("sqlite:///", "").lstrip("/")
-        db_dir = os.path.dirname(db_path)
-        if db_dir and not os.path.exists(db_dir):
-            os.makedirs(db_dir, exist_ok=True)
-    Base.metadata.create_all(bind=engine)
+    """Aplica las migraciones pendientes. Equivale a `alembic upgrade head`."""
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config(str(_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_ROOT / "migrations"))
+    cfg.attributes["configure_logger"] = False
+    command.upgrade(cfg, "head")
+
 
 def save_to_db(ai_res):
     db = SessionLocal()

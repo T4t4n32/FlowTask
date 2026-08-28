@@ -16,6 +16,8 @@ dependencies = [
     "sqlalchemy",
     "jinja2",
     "python-dotenv",
+    "alembic",
+    "psycopg[binary]",
 ]
 
 [project.optional-dependencies]

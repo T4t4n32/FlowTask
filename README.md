@@ -18,6 +18,36 @@ Un sistema que interpreta frases conversacionales del usuario (como "Reunión co
 ### Público Objetivo Principal
 Profesionales entre 25 y 55 años que gestionan agendas ocupadas y buscan optimizar tareas administrativas recurrentes.
 
+## Puesta en marcha (desarrollo)
+
+```bash
+python -m venv venv
+venv\Scripts\pip install -r requirements.txt      # Windows
+# .venv/bin/pip install -r requirements.txt       # Linux/Mac
+
+cp .env.example .env                               # y rellenar TELEGRAM_TOKEN y GEMINI_API_KEY
+```
+
+### Base de datos y migraciones (Alembic)
+
+El esquema se gestiona con **Alembic**. `DATABASE_URL` en `.env` decide el destino:
+vacío = SQLite local (`sqlite:///./flowtask.db`); una URL `postgresql://...` = Supabase
+(usar la cadena del *Transaction pooler*, puerto 6543).
+
+```bash
+venv\Scripts\alembic upgrade head        # aplica las migraciones pendientes
+venv\Scripts\alembic downgrade base      # revierte todo
+venv\Scripts\alembic current             # revisión actual
+venv\Scripts\alembic revision -m "..."   # nueva migración (o --autogenerate)
+```
+
+Al arrancar, la app llama a `alembic upgrade head` automáticamente (`init_db()` en
+`src/flowtask/infrastructure/database.py`), así que en desarrollo no hace falta correrlo a mano.
+
+```bash
+venv\Scripts\python -m uvicorn src.flowtask.main:app --reload
+```
+
 ## Estado del Proyecto
 
 **Fase actual**: Diseño y planificación previa al desarrollo  
