@@ -116,6 +116,8 @@ def get_pending_tasks_summary(user_id: int, team_id: int | None = None):
 @app.get("/app")
 def pair_and_open(code: str):
     """El celular abre este enlace (de /vincular): canjea el código por una cookie de sesión."""
+    if not settings.WEB_ENABLED:
+        return HTMLResponse("Panel web desactivado.", 404)
     uid = pairing.consume(code)
     if uid is None:
         return HTMLResponse("Código inválido o caducado. Pide otro con /vincular en el bot.", 400)
@@ -131,6 +133,8 @@ def pair_and_open(code: str):
 async def view_dashboard(
     request: Request, date_param: Optional[str] = None, ft_token: Optional[str] = Cookie(None)
 ):
+    if not settings.WEB_ENABLED:
+        return HTMLResponse("Panel web desactivado. FlowTask funciona por Telegram.", 404)
     user_id = user_from_token(ft_token)
     if user_id is None:
         return HTMLResponse(_NO_TOKEN_HTML, status_code=200)
@@ -365,6 +369,8 @@ async def handle_incoming_message(
 
     # --- 1. COMANDOS ---
     if text.startswith("/vincular") or text.startswith("/app"):
+        if not settings.WEB_ENABLED:
+            return "El panel web está desactivado por ahora. Usa el chat."
         code = pairing.new_code(user_id)
         return (
             f"🔗 Abre esto en tu celular (misma WiFi):\n{_base_url()}/app?code={code}\n\n"
@@ -428,6 +434,9 @@ async def handle_incoming_message(
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     """Adaptador fino: parsea el payload de Telegram y delega en el núcleo."""
+    # En modo polling el webhook no se usa; dejarlo abierto permitiría inyectar mensajes falsos.
+    if settings.TELEGRAM_POLLING:
+        return {"ok": True}
     try:
         msg = (await request.json()).get("message", {})
         if "text" not in msg:

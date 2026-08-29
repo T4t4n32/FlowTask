@@ -2,6 +2,7 @@
 import asyncio
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.flowtask import main, pairing
@@ -12,6 +13,12 @@ from src.flowtask.infrastructure.database import (
 )
 
 client = TestClient(main.app)
+
+
+@pytest.fixture(autouse=True)
+def _web_on(monkeypatch):
+    # El panel está desactivado por defecto (V1 = solo chat); estos tests lo prueban activo.
+    monkeypatch.setattr(main.settings, "WEB_ENABLED", True)
 
 
 def test_codigo_de_un_solo_uso():
