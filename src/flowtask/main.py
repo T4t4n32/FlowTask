@@ -17,7 +17,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
 sys.path.append(PROJECT_ROOT)
 
-from src.flowtask import teams
+from src.flowtask import nlp, teams
 from src.flowtask.config import settings
 from src.flowtask.infrastructure.ai_engine import AIEngine
 from src.flowtask.infrastructure.database import (
@@ -201,11 +201,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             return {"ok": True}
 
         # Si es una tarea válida (SAVE), guardamos
-        save_to_db(ai_res, user_id)
+        due_at = nlp.parse_when(text)
+        save_to_db(ai_res, user_id, due_at)
 
         icons = {"MANGO_REL": "🥭 *MANGO*", "HABIT": "🔄 *HÁBITO*", "TASK": "✅ *TAREA*"}
         msg = f"{icons.get(ai_res.category, '📌')}\n\n*Registrado:* {ai_res.clean_title}"
-        
+        if due_at:
+            msg += f"\n⏰ para el {due_at.strftime('%d/%m a las %H:%M')}"
+
         background_tasks.add_task(send_msg, chat_id, msg)
 
     except Exception as e:

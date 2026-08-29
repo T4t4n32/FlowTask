@@ -18,6 +18,7 @@ dependencies = [
     "python-dotenv",
     "alembic",
     "psycopg[binary]",
+    "dateparser",
 ]
 
 [project.optional-dependencies]

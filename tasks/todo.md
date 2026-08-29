@@ -192,25 +192,34 @@ políticas ahora sería contra columnas inexistentes. Lo que sí aporta valor ho
 
 ## Fase 2: Fechas naturales + recordatorios
 
-### Task 7: Parser de fecha/hora en español + `due_at` / `reminder_sent`
+Progreso: [~] Task 7 (código hecho; falta aplicar 0005 a Supabase)  ·  [ ] Task 8  ·  [ ] Task 9
 
-**Description:** Wire de `dateparser` (ya en requirements). Helper `parse_when(text) -> datetime | None`
-con `languages=['es']`, `PREFER_DATES_FROM='future'`. `tasks` gana `due_at` (timestamptz NULL) y
-`reminder_sent` (bool default false). Al guardar, se extrae `due_at` y se limpia del título. El bot
-confirma la fecha interpretada en su respuesta.
+### Task 7: Parser de fecha/hora en español + `due_at` / `reminder_sent` — CÓDIGO HECHO (2026-08-29)
+
+**Description:** Wire de `dateparser`. Helper `parse_when(text, now=None) -> datetime | None`.
+`tasks` gana `due_at` (nullable) y `reminder_sent` (bool, server_default 0). Al guardar se extrae
+`due_at`; el bot confirma la fecha interpretada.
 
 **Acceptance criteria:**
-- [ ] Migración `0005`: `tasks.due_at`, `tasks.reminder_sent`
-- [ ] `parse_when("mañana a las 10")`, `"el viernes 4pm"`, `"en 2 horas"` devuelven el datetime correcto
-- [ ] Mensaje sin fecha → `due_at = NULL`, sin romper el flujo actual
-- [ ] La respuesta del bot incluye "⏰ para el <fecha> <hora>" cuando hay `due_at`
+- [x] `src/flowtask/nlp.py`: `parse_when()` con `search_dates(languages=["es"], PREFER_DATES_FROM="future")` + `_normalize()` que traduce "a las 9" / "9am" / "9 de la noche" a "HH:00" (dateparser 1.4.x no las pilla solo)
+- [x] Migración `0005_due_at`: `tasks.due_at`, `tasks.reminder_sent` + índice `ix_tasks_due_pending (due_at, reminder_sent)` (para el barrido de la Task 8). `alembic check` limpio.
+- [x] Mensaje sin fecha → `due_at = NULL`, flujo intacto
+- [x] Respuesta del bot: `⏰ para el DD/MM a las HH:MM` cuando hay `due_at`
+- [x] Prompt de la IA: `clean_title` "SIN fechas ni horas"
+- [x] `dateparser` añadido a requirements.txt / pyproject.toml
+- [ ] **TÚ:** `alembic upgrade head` para aplicar `0005` a Supabase (el sandbox no pudo por DNS; funcionará en tu máquina)
 
 **Verification:**
-- [ ] Test `pytest` parametrizado sobre `parse_when` con casos es-ES
-- [ ] Manual: "Pagar luz mañana 9am" guarda `due_at` correcto y lo confirma
+- [x] `pytest tests/test_nlp.py` → 11 passed (mañana 9am, viernes 4pm, 15:30, 7 de la mañana, 9 de la noche, "5 de septiembre", "en 2 horas", sin-fecha→None, prefiere futuro)
+- [x] `pytest -q` total: 20 passed, 2 skipped
+- [x] Smoke: webhook con "Pagar la factura de la luz mañana a las 9am" → fila con `due_at = 2026-08-30 09:00`; "Comprar pan" → `due_at = NULL`
+- [ ] **TÚ (manual):** mandar "Pagar luz mañana 9am" al bot y ver la confirmación con la hora
+
+**Ceiling (`ponytail:`):** dateparser no combina "el viernes" + "a las 4" si van separados en frases
+largas → puede quedar la fecha sin hora. El bot confirma la interpretación para que corrijas.
 
 **Dependencies:** Task 4
-**Files likely touched:** `src/flowtask/nlp.py`, `src/flowtask/infrastructure/ai_engine.py`, `src/flowtask/infrastructure/database.py`, `src/flowtask/main.py`, `migrations/versions/0005_due_at.py`, `tests/test_nlp.py`
+**Files likely touched:** `src/flowtask/nlp.py`, `src/flowtask/infrastructure/ai_engine.py`, `src/flowtask/infrastructure/database.py`, `src/flowtask/main.py`, `migrations/versions/0005_due_at.py`, `tests/test_nlp.py`, `requirements.txt`, `pyproject.toml`
 **Estimated scope:** Medium
 **Skills:** `pytest`
 

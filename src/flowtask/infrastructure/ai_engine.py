@@ -58,7 +58,8 @@ class AIEngine:
         system_context = (
             "Clasifica el mensaje. Responde SOLO con JSON, sin markdown.\n"
             'Campos: intent ("SAVE"|"CHAT"), category ("MANGO_REL"|"HABIT"|"TASK"), '
-            "clean_title (str corto), response_text (str, solo si intent=CHAT), is_habit (bool).\n"
+            "clean_title (str corto, SIN fechas ni horas), "
+            "response_text (str, solo si intent=CHAT), is_habit (bool).\n"
             "MANGO_REL=dinero/pagos/citas médicas/reuniones/urgencias. "
             "HABIT=rutinas repetidas (gym, salud, lectura). TASK=compras/recados/ideas. "
             "CHAT=saludo o charla sin acción."

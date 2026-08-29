@@ -11,6 +11,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     create_engine,
+    text,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -87,9 +88,14 @@ class TaskModel(Base):
     is_habit = Column(Boolean, default=False)
     completed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.now)
+    due_at = Column(DateTime, nullable=True)                 # cuándo recordar (None = sin recordatorio)
+    reminder_sent = Column(
+        Boolean, nullable=False, server_default=text("0"), default=False
+    )
 
     __table_args__ = (
         Index("ix_tasks_user_created", "user_id", "created_at"),
+        Index("ix_tasks_due_pending", "due_at", "reminder_sent"),
     )
 
 
@@ -126,7 +132,7 @@ def get_or_create_user(platform: str, chat_id, display_name: str = "") -> int:
         db.close()
 
 
-def save_to_db(ai_res, user_id: int):
+def save_to_db(ai_res, user_id: int, due_at=None):
     db = SessionLocal()
     new_item = TaskModel(
         user_id=user_id,
@@ -134,6 +140,7 @@ def save_to_db(ai_res, user_id: int):
         category=ai_res.category,
         is_habit=ai_res.is_habit,
         completed=False,
+        due_at=due_at,
     )
     db.add(new_item)
     db.commit()
