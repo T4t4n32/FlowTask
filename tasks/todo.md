@@ -192,7 +192,7 @@ políticas ahora sería contra columnas inexistentes. Lo que sí aporta valor ho
 
 ## Fase 2: Fechas naturales + recordatorios
 
-Progreso: [~] Task 7 (código hecho; falta aplicar 0005 a Supabase)  ·  [ ] Task 8  ·  [ ] Task 9
+Progreso: [x] Task 7  ·  [ ] Task 8  ·  [ ] Task 9
 
 ### Task 7: Parser de fecha/hora en español + `due_at` / `reminder_sent` — CÓDIGO HECHO (2026-08-29)
 
@@ -207,7 +207,7 @@ Progreso: [~] Task 7 (código hecho; falta aplicar 0005 a Supabase)  ·  [ ] Tas
 - [x] Respuesta del bot: `⏰ para el DD/MM a las HH:MM` cuando hay `due_at`
 - [x] Prompt de la IA: `clean_title` "SIN fechas ni horas"
 - [x] `dateparser` añadido a requirements.txt / pyproject.toml
-- [ ] **TÚ:** `alembic upgrade head` para aplicar `0005` a Supabase (el sandbox no pudo por DNS; funcionará en tu máquina)
+- [x] `0005` aplicada a Supabase (`0005_due_at (head)`; `due_at TIMESTAMP`, `reminder_sent BOOLEAN`). Bug corregido: `server_default` era `0` (SQLite ok, Postgres no) → `false`.
 
 **Verification:**
 - [x] `pytest tests/test_nlp.py` → 11 passed (mañana 9am, viernes 4pm, 15:30, 7 de la mañana, 9 de la noche, "5 de septiembre", "en 2 horas", sin-fecha→None, prefiere futuro)

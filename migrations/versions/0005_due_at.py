@@ -22,7 +22,7 @@ def upgrade() -> None:
             "reminder_sent",
             sa.Boolean(),
             nullable=False,
-            server_default=sa.text("0"),
+            server_default=sa.text("false"),
         ),
     )
     op.create_index("ix_tasks_due_pending", "tasks", ["due_at", "reminder_sent"])

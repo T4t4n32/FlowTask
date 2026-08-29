@@ -90,7 +90,7 @@ class TaskModel(Base):
     created_at = Column(DateTime, default=datetime.now)
     due_at = Column(DateTime, nullable=True)                 # cuándo recordar (None = sin recordatorio)
     reminder_sent = Column(
-        Boolean, nullable=False, server_default=text("0"), default=False
+        Boolean, nullable=False, server_default=text("false"), default=False
     )
 
     __table_args__ = (
