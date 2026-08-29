@@ -177,24 +177,40 @@ def _format_projects(rows: list[dict]) -> str:
         out.append(
             f"• *{p['title']}* — {p['done']}/{p['total']} · límite {p['deadline'].strftime('%d/%m')}"
         )
+        for quien, frac in p.get("by_person", {}).items():
+            out.append(f"    ↳ {quien}: {frac}")
     return "\n".join(out)
 
 
-async def _generate_and_confirm(platform, chat_id, user_id, goal, rubric, deadline) -> str:
+async def _generate_and_confirm(
+    platform, chat_id, user_id, goal, rubric, deadline, team_id=None
+) -> str:
     tasks = await ai_engine.decompose_goal(goal, rubric, deadline)
     convo_state.set(
         platform, chat_id,
-        {"step": "confirm", "goal": goal, "rubric": rubric, "deadline": deadline, "tasks": tasks},
+        {"step": "confirm", "goal": goal, "rubric": rubric, "deadline": deadline,
+         "tasks": tasks, "team_id": team_id},
     )
     plan = "\n".join(f"• {t.due_date.strftime('%d/%m')} — {t.title}" for t in tasks)
+    destino = " (equipo)" if team_id else ""
     return (
-        f"🗂️ *Plan para «{goal}»* (límite {deadline.strftime('%d/%m/%Y')}):\n{plan}\n\n"
+        f"🗂️ *Plan para «{goal}»*{destino} (límite {deadline.strftime('%d/%m/%Y')}):\n{plan}\n\n"
         "Responde *aceptar* o *regenerar* (o *cancelar*)."
     )
 
 
+async def _finish_deadline(platform, chat_id, user_id, st, dl):
+    """Tras la fecha: si el usuario tiene equipos, pregunta destino; si no, genera el plan."""
+    st.update(step="team", deadline=dl)
+    if not teams.list_teams(user_id):
+        return await _generate_and_confirm(
+            platform, chat_id, user_id, st["goal"], st["rubric"], dl
+        )
+    return "👥 ¿Para un equipo? Escribe el nombre del equipo, o *no* para personal."
+
+
 async def handle_project_flow(platform, chat_id, user_id: int, text: str) -> str:
-    """Asistente de `/proyecto`: meta → rúbrica → fecha → confirmar."""
+    """Asistente de `/proyecto`: meta → rúbrica → fecha → (equipo) → confirmar."""
     st = convo_state.get(platform, chat_id)
     low = text.strip().lower()
 
@@ -203,11 +219,19 @@ async def handle_project_flow(platform, chat_id, user_id: int, text: str) -> str
         convo_state.clear(platform, chat_id)
         arg = text[len("/proyecto"):].strip()
         parts = [p.strip() for p in arg.split("|")]
-        if len(parts) == 3 and all(parts):
+        if len(parts) in (3, 4) and all(parts[:3]):
             dl = _parse_deadline(parts[2])
             if dl is None:
                 return "No entendí la fecha límite. Usa formato *2026-09-15*."
-            return await _generate_and_confirm(platform, chat_id, user_id, parts[0], parts[1], dl)
+            team_id = None
+            if len(parts) == 4 and parts[3]:
+                team = teams.get_member_team_by_name(user_id, parts[3])
+                if team is None:
+                    return f"No estás en ningún equipo llamado *{parts[3]}*."
+                team_id = team["id"]
+            return await _generate_and_confirm(
+                platform, chat_id, user_id, parts[0], parts[1], dl, team_id
+            )
         if arg:
             convo_state.set(platform, chat_id, {"step": "rubric", "goal": arg})
             return "📋 Meta anotada. ¿Rúbrica de evaluación? (o escribe *ninguna*)"
@@ -231,27 +255,51 @@ async def handle_project_flow(platform, chat_id, user_id: int, text: str) -> str
         dl = _parse_deadline(text)
         if dl is None:
             return "No entendí la fecha. Prueba con formato *2026-09-15*."
+        return await _finish_deadline(platform, chat_id, user_id, st, dl)
+    if step == "team":
+        team_id = None
+        if low not in ("no", "-", "ninguno", "personal"):
+            team = teams.get_member_team_by_name(user_id, text)
+            if team is None:
+                return "No estás en ese equipo. Escribe el nombre exacto o *no*."
+            team_id = team["id"]
         return await _generate_and_confirm(
-            platform, chat_id, user_id, st["goal"], st["rubric"], dl
+            platform, chat_id, user_id, st["goal"], st["rubric"], st["deadline"], team_id
         )
     if step == "confirm":
         if low in ("aceptar", "ok", "si", "sí", "dale"):
             res = projects.create_project(
-                user_id, st["goal"], st["rubric"], st["deadline"], st["tasks"]
+                user_id, st["goal"], st["rubric"], st["deadline"], st["tasks"],
+                team_id=st.get("team_id"),
             )
             convo_state.clear(platform, chat_id)
+            await _notify_assignees(platform, res)
             return (
                 f"✅ Proyecto *{res['title']}* creado con {res['n_tasks']} tareas. "
                 "Sus recordatorios ya están activos."
             )
         if low in ("regenerar", "otra", "otro", "de nuevo"):
             return await _generate_and_confirm(
-                platform, chat_id, user_id, st["goal"], st["rubric"], st["deadline"]
+                platform, chat_id, user_id, st["goal"], st["rubric"], st["deadline"],
+                st.get("team_id"),
             )
         return "Responde *aceptar* o *regenerar* (o *cancelar*)."
 
     convo_state.clear(platform, chat_id)
     return "Algo se enredó. Empieza de nuevo con `/proyecto`."
+
+
+async def _notify_assignees(platform, res: dict) -> None:
+    assignments = res.get("assignments") or {}
+    if not assignments:
+        return
+    contacts = projects.contacts_for(list(assignments.keys()))
+    for uid, titles in assignments.items():
+        c = contacts.get(uid)
+        if not c:
+            continue
+        body = f"📌 Tu parte de *{res['title']}*:\n" + "\n".join(f"• {t}" for t in titles)
+        await send_message(c[0], c[1], body)
 
 
 async def handle_incoming_message(

@@ -344,7 +344,7 @@ adaptador `whatsapp.py` + endpoint `/webhook/whatsapp`, sin tocar la lógica.
 
 ## Fase 4: Descomposición de metas/proyectos
 
-Progreso: [x] Task 12  ·  [x] Task 13  ·  [ ] Task 14
+Progreso: [x] Task 12  ·  [x] Task 13  ·  [x] Task 14  — Fase 4 COMPLETA
 
 ### Task 12: Tabla `projects` + `ai_engine.decompose_goal()` — HECHA (2026-08-29)
 
@@ -400,31 +400,36 @@ el usuario reinicia `/proyecto`.
 
 ---
 
-### Task 14: Reparto de tareas generadas entre el equipo
+### Task 14: Reparto de tareas de proyecto de equipo — HECHA (2026-08-29)
 
-**Description:** Si el proyecto tiene `team_id`, al persistir las tareas se reparten entre los
-`team_members` (round-robin, o por carga actual = nº de tareas pendientes). Cada asignado recibe un
-mensaje con sus tareas.
+**Description:** Si el proyecto tiene `team_id`, `create_project` reparte las tareas entre los miembros
+balanceando por carga, y `handle_project_flow` notifica a cada asignado.
 
 **Acceptance criteria:**
-- [ ] Proyecto de equipo → cada tarea generada tiene `assignee_id` de un miembro
-- [ ] Reparto balancea por nº de tareas pendientes del miembro, no puro round-robin
-- [ ] Cada miembro recibe una notificación con su parte
-- [ ] `/proyectos` muestra el desglose por persona
+- [x] `projects._balanced_assign(db, member_ids, tasks)`: cada tarea al miembro con **menos tareas pendientes** (desempate por id). No round-robin puro.
+- [x] `create_project(team_id=...)`: cada `TaskModel` con `assignee_id` = miembro; devuelve `assignments = {user_id: [títulos]}`
+- [x] Wizard `/proyecto`: paso `team` (solo si el usuario está en algún equipo) → nombre de equipo o *no*. Forma corta: 4º campo `| equipo`
+- [x] `_notify_assignees`: al aceptar un proyecto de equipo, cada miembro recibe "📌 Tu parte de *X*: …" por su canal
+- [x] `/proyectos`: para proyectos de equipo, desglose `↳ nombre: hechas/total`. `list_projects` ahora incluye proyectos de equipos donde eres miembro (no solo los que creaste)
 
 **Verification:**
-- [ ] Test `pytest`: proyecto de equipo con 3 miembros y 9 tareas → 3 cada uno
-- [ ] Manual: crear proyecto de equipo, los 3 reciben su mensaje
+- [x] `pytest tests/test_distribution.py` → 6 passed (reparto parejo 9→3/3/3; respeta carga previa; equipo asigna todas; personal no asigna; desglose por persona; flujo de chat notifica a ambos miembros)
+- [x] `pytest -q` total: 56 passed, 2 skipped
+- [ ] **TÚ (manual, Task 19):** crear proyecto de equipo por chat, los miembros reciben su parte
+
+**Nota:** las tareas de equipo llevan `user_id = assignee_id = miembro` (para que `/list <equipo>` y
+el barrido de recordatorios funcionen sin cambios).
 
 **Dependencies:** Task 13
-**Files likely touched:** `src/flowtask/projects.py`, `src/flowtask/teams.py`, `tests/test_distribution.py`
+**Files likely touched:** `src/flowtask/projects.py`, `src/flowtask/main.py`, `tests/test_distribution.py`
 **Estimated scope:** Small
 
-### Checkpoint: Fase 4
-- [ ] `pytest tests/ -q` verde
-- [ ] Una meta con rúbrica genera tareas diarias con fecha
-- [ ] En un proyecto de equipo el trabajo queda repartido y notificado
-- [ ] Revisión con humano
+### Checkpoint: Fase 4 — COMPLETA (2026-08-29)
+- [x] `pytest -q` verde (56 passed, 2 skipped)
+- [x] Una meta con rúbrica genera tareas con fecha (IA o fallback de hitos)
+- [x] En un proyecto de equipo el trabajo queda repartido y notificado (código + tests)
+- [ ] **TÚ:** cambiar `GEMINI_MODEL` en `.env` a `gemini-flash-lite-latest` (el actual da 404 → se usa el fallback)
+- [ ] **Revisión con humano** antes de la Fase 5
 
 ---
 
