@@ -159,69 +159,64 @@ def handle_team_command(user_id: int, text: str) -> str:
     return "Uso: `/equipo crear <nombre>` · `/equipo unir <codigo>` · `/equipo listar`"
 
 
+async def handle_incoming_message(
+    platform: str, chat_id, text: str, display_name: str = ""
+) -> str:
+    """Núcleo agnóstico de plataforma: recibe un mensaje, devuelve la respuesta a enviar."""
+    text = text.strip()
+    # Identidad = cuenta de chat. Se crea el usuario en el primer mensaje.
+    user_id = get_or_create_user(platform, chat_id, display_name)
+
+    # --- 1. COMANDOS ---
+    if text.startswith("/equipo"):
+        return handle_team_command(user_id, text)
+
+    if text.startswith("/list"):
+        arg = text[len("/list"):].strip()
+        if not arg:
+            return get_pending_tasks_summary(user_id)
+        team = teams.get_member_team_by_name(user_id, arg)
+        if team is None:
+            return f"No estás en ningún equipo llamado *{arg}*. Usa `/equipo listar`."
+        return get_pending_tasks_summary(user_id, team_id=team["id"])
+
+    # --- 2. IA ---
+    ai_res = await ai_engine.classify_text(text)
+
+    if ai_res.intent == "CHAT":
+        return ai_res.response_text or "🤖 Escuchando..."
+
+    # SAVE: tarea o hábito
+    due_at = nlp.parse_when(text)
+    if ai_res.is_habit:
+        habits.create_habit(user_id, ai_res.clean_title, due_at.time() if due_at else None)
+        msg = f"🔄 *Hábito* registrado: {ai_res.clean_title}"
+        if due_at:
+            msg += f"\n⏰ cada día a las {due_at.strftime('%H:%M')}"
+        return msg
+
+    save_to_db(ai_res, user_id, due_at)
+    icons = {"MANGO_REL": "🥭 *MANGO*", "TASK": "✅ *TAREA*"}
+    msg = f"{icons.get(ai_res.category, '📌')}\n\n*Registrado:* {ai_res.clean_title}"
+    if due_at:
+        msg += f"\n⏰ para el {due_at.strftime('%d/%m a las %H:%M')}"
+    return msg
+
+
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
+    """Adaptador fino: parsea el payload de Telegram y delega en el núcleo."""
     try:
-        data = await request.json()
-        if "message" not in data or "text" not in data["message"]:
+        msg = (await request.json()).get("message", {})
+        if "text" not in msg:
             return {"ok": True}
-
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"]["text"].strip()
-        display_name = data["message"].get("from", {}).get("first_name", "")
-
-        # Identidad = cuenta de chat. Se crea el usuario en el primer mensaje.
-        user_id = get_or_create_user("telegram", chat_id, display_name)
-
-        # --- 1. INTERCEPTOR DE COMANDOS ---
-        if text.startswith("/equipo"):
-            reply = handle_team_command(user_id, text)
-            background_tasks.add_task(send_message, "telegram", chat_id,reply)
-            return {"ok": True}
-
-        if text.startswith("/list"):
-            arg = text[len("/list"):].strip()
-            if arg:
-                team = teams.get_member_team_by_name(user_id, arg)
-                if team is None:
-                    reply = f"No estás en ningún equipo llamado *{arg}*. Usa `/equipo listar`."
-                else:
-                    reply = get_pending_tasks_summary(user_id, team_id=team["id"])
-            else:
-                reply = get_pending_tasks_summary(user_id)
-            background_tasks.add_task(send_message, "telegram", chat_id,reply)
-            return {"ok": True}
-
-        # --- 2. PROCESAMIENTO DE IA ---
-        ai_res = await ai_engine.classify_text(text)
-
-        # Si es solo charla, respondemos y NO guardamos
-        if ai_res.intent == "CHAT":
-            response_txt = ai_res.response_text if ai_res.response_text else "🤖 Escuchando..."
-            background_tasks.add_task(send_message, "telegram", chat_id,response_txt)
-            return {"ok": True}
-
-        # Si es una tarea válida (SAVE), guardamos
-        due_at = nlp.parse_when(text)
-
-        if ai_res.is_habit:
-            # Hábito: se guarda la definición y se genera ya la instancia de hoy.
-            habits.create_habit(user_id, ai_res.clean_title, due_at.time() if due_at else None)
-            msg = f"🔄 *Hábito* registrado: {ai_res.clean_title}"
-            if due_at:
-                msg += f"\n⏰ cada día a las {due_at.strftime('%H:%M')}"
-        else:
-            save_to_db(ai_res, user_id, due_at)
-            icons = {"MANGO_REL": "🥭 *MANGO*", "TASK": "✅ *TAREA*"}
-            msg = f"{icons.get(ai_res.category, '📌')}\n\n*Registrado:* {ai_res.clean_title}"
-            if due_at:
-                msg += f"\n⏰ para el {due_at.strftime('%d/%m a las %H:%M')}"
-
-        background_tasks.add_task(send_message, "telegram", chat_id, msg)
-
+        chat_id = msg["chat"]["id"]
+        name = msg.get("from", {}).get("first_name", "")
+        reply = await handle_incoming_message("telegram", chat_id, msg["text"], name)
+        if reply:
+            background_tasks.add_task(send_message, "telegram", chat_id, reply)
     except Exception as e:
         logger.error(f"Falla Webhook: {e}")
-    
     return {"ok": True}
 
 @app.post("/complete/{task_id}")

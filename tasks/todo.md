@@ -299,25 +299,29 @@ match ignorando duraciones sueltas ("15 min") → "leer 15 min cada día a las 1
 
 ## Fase 3: Preparar multi-canal (sin coste)
 
-### Task 10: Refactor a núcleo agnóstico de plataforma
+Progreso: [x] Task 10  ·  [~] Task 11 DIFERIDA (WhatsApp, hasta publicar)
+
+### Task 10: Refactor a núcleo agnóstico de plataforma — HECHA (2026-08-29)
 
 **Description:** Extraer del `telegram_webhook` toda la lógica no-Telegram a
-`handle_incoming_message(platform, chat_id, text) -> reply_text`. Crear dispatcher
-`send_message(platform, chat_id, text)` que hoy solo enruta a Telegram. El endpoint de Telegram queda
-como adaptador fino (parseo del payload + llamada al núcleo).
+`handle_incoming_message(platform, chat_id, text, display_name) -> reply_text`.
 
 **Acceptance criteria:**
-- [ ] `handle_incoming_message` no importa nada específico de Telegram
-- [ ] `send_message` decide el transporte por `platform`
-- [ ] El webhook de Telegram sigue pasando todos los tests y el flujo manual
-- [ ] `background_tasks` sigue usándose para no bloquear el webhook
+- [x] `handle_incoming_message` (en `main.py`) no toca nada de Telegram: resuelve usuario, enruta `/equipo` y `/list`, llama a la IA, guarda tarea/hábito, devuelve el string de respuesta
+- [x] `send_message(platform, chat_id, text)` (en `messaging.py`, desde Task 8) decide el transporte por `platform`
+- [x] `telegram_webhook` es un adaptador fino: parsea el payload → `handle_incoming_message("telegram", ...)` → `background_tasks.add_task(send_message, "telegram", chat_id, reply)`
+- [x] `background_tasks` sigue usándose para el envío de la respuesta
 
 **Verification:**
-- [ ] Todos los tests previos siguen verdes sin cambios de assert
-- [ ] Manual: Telegram funciona idéntico
+- [x] `pytest -q`: 38 passed, 2 skipped (los 32 previos sin cambios de assert + 6 nuevos de `test_handler`)
+- [x] `test_handler.py`: comando de equipo no llama a la IA; `/list` vacío; guardar tarea; charla; hábito; **el mismo mensaje por `platform="whatsapp"` da la misma respuesta que por `"telegram"`**
+- [x] Smoke: webhook de Telegram con `/equipo`, `/list`, mensaje libre → todo `{"ok":true}`, dashboard 200, sin errores
+
+**Añadir un canal nuevo (WhatsApp, etc.) = solo:** un endpoint `/webhook/<canal>` que parsee su payload
+y llame a `handle_incoming_message("<canal>", ...)`, + una rama en `send_message`. La lógica no se toca.
 
 **Dependencies:** Task 8
-**Files likely touched:** `src/flowtask/main.py`, `src/flowtask/messaging.py`, `tests/test_handler.py`
+**Files likely touched:** `src/flowtask/main.py`, `tests/test_handler.py`
 **Estimated scope:** Medium
 
 ---
