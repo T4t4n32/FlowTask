@@ -4,6 +4,7 @@ from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from .habits import rollover_habits
 from .infrastructure.database import SessionLocal, TaskModel, UserModel
 from .messaging import send_message
 
@@ -40,6 +41,13 @@ async def reminder_sweep() -> None:
         db.close()
 
 
+async def habit_rollover() -> None:
+    """Cada día 00:05: genera la tarea de hoy para cada hábito activo."""
+    n = rollover_habits()
+    if n:
+        logger.info("habit_rollover creó %d instancias de hábito", n)
+
+
 def start() -> None:
     # ponytail: max_instances=1 basta con 1 réplica; con varias → pg_advisory_lock aquí.
     scheduler.add_job(
@@ -51,8 +59,18 @@ def start() -> None:
         max_instances=1,
         coalesce=True,
     )
+    scheduler.add_job(
+        habit_rollover,
+        "cron",
+        hour=0,
+        minute=5,
+        id="habit_rollover",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.start()
-    logger.info("Scheduler arrancado (reminder_sweep cada 60s)")
+    logger.info("Scheduler arrancado (reminder_sweep 60s + habit_rollover 00:05)")
 
 
 def shutdown() -> None:

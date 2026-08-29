@@ -1,14 +1,6 @@
 """Task 4: cada usuario ve solo sus tareas."""
-import os
-import pathlib
-
-# BD de test aislada, fijada ANTES de importar la app (config.load_dotenv no la pisa).
-_DB = pathlib.Path(__file__).parent / "test_isolation.db"
-_DB.unlink(missing_ok=True)
-os.environ["DATABASE_URL"] = f"sqlite:///{_DB.as_posix()}"
-
-from src.flowtask import main  # noqa: E402  -> init_db() aplica las migraciones
-from src.flowtask.infrastructure.database import (  # noqa: E402
+from src.flowtask import main
+from src.flowtask.infrastructure.database import (
     SessionLocal,
     TaskModel,
     get_or_create_user,

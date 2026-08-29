@@ -1,9 +1,11 @@
 """Extrae fecha/hora en español de un texto libre.
 
-dateparser 1.4.x no interpreta bien "a las 9" / "a las 9am" (se queda con la hora
-actual). _normalize() traduce esas frases a "HH:00" antes de parsear.
-ponytail: heurística de horas; "el viernes a las 4" en frases largas puede quedar
-sin hora si dateparser no junta los dos trozos. El bot confirma la fecha interpretada.
+dateparser 1.4.x no interpreta bien "a las 9" / "9am" / "cada día a las 17:00"
+(se queda con la hora actual o devuelve None). _normalize() traduce esas frases y
+quita las palabras de recurrencia antes de parsear; parse_when() prefiere el
+último match que no sea una duración suelta ("15 min").
+ponytail: heurística de horas; en frases muy enrevesadas puede fallar. El bot
+confirma la fecha interpretada para que el usuario corrija.
 """
 import re
 from datetime import datetime
@@ -14,6 +16,11 @@ _SETTINGS = {
     "PREFER_DATES_FROM": "future",
     "RETURN_AS_TIMEZONE_AWARE": False,
 }
+
+_RECURRENCE = re.compile(
+    r"\b(cada\s+d[ií]a|todos\s+los\s+d[ií]as|a\s+diario|diariamente|cada)\b", re.I
+)
+_DURATION = re.compile(r"^\d+\s*(min|minutos?|h|hs|hrs|horas?|seg|segundos?)$", re.I)
 
 
 def _ampm(m: re.Match) -> str:
@@ -35,10 +42,17 @@ def _del_dia(m: re.Match) -> str:
 
 
 def _normalize(text: str) -> str:
-    t = text
-    # "a las 9am" / "4 p.m." -> "09:00" / "16:00"
+    t = _RECURRENCE.sub(" ", text)
+    # "17hs" / "17 h" / "17hrs" -> "17:00"
+    t = re.sub(
+        r"\b(\d{1,2})\s*h(?:s|rs)?\b(?!\s*[:.]?\d)",
+        lambda m: f"{int(m.group(1)):02d}:00",
+        t,
+        flags=re.I,
+    )
+    # "9am" / "4 p.m." -> "09:00" / "16:00"
     t = re.sub(r"\b(?:a\s+las\s+)?(\d{1,2})\s*([ap])\.?\s*m\.?\b", _ampm, t, flags=re.I)
-    # "a las 9 de la tarde/noche/mañana" -> "21:00" / "09:00"
+    # "9 de la tarde/noche/mañana" -> "21:00" / "09:00"
     t = re.sub(
         r"\b(?:a\s+las\s+)?(\d{1,2})\s+de\s+la\s+(mañana|manana|tarde|noche|madrugada)\b",
         _del_dia,
@@ -64,4 +78,10 @@ def parse_when(text: str, now: datetime | None = None) -> datetime | None:
         found = search_dates(_normalize(text), languages=["es"], settings=settings)
     except Exception:
         return None
-    return found[0][1] if found else None
+    if not found:
+        return None
+    # último match que no sea una duración suelta ("15 minutos" dentro del título)
+    for matched, dt in reversed(found):
+        if not _DURATION.match(matched.strip()):
+            return dt
+    return found[-1][1]

@@ -17,6 +17,9 @@ NOW = datetime(2026, 8, 29, 14, 0, 0)
         ("reunion mañana a las 15:30", datetime(2026, 8, 30, 15, 30)),
         ("meditar a las 7 de la mañana", datetime(2026, 8, 30, 7, 0)),
         ("cena a las 9 de la noche", datetime(2026, 8, 29, 21, 0)),
+        # hábitos: "cada día" / "15 min" no deben confundir la hora
+        ("leer 15 minutos cada dia a las 17:00", datetime(2026, 8, 29, 17, 0)),
+        ("ir al gym todos los dias a las 7am", datetime(2026, 8, 30, 7, 0)),
         ("Entregar informe el 5 de septiembre", datetime(2026, 9, 5, 0, 0)),
     ],
 )

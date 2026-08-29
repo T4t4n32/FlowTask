@@ -69,7 +69,7 @@
                 <h3 class="text-[10px] font-black text-zinc-700 uppercase tracking-widest mb-4 ml-4">Prioridad Mango</h3>
                 {% for m in mango %}
                 <div class="mango-card p-7 rounded-[2.5rem] mb-4 flex justify-between items-center shadow-2xl transform active:scale-95 transition-transform">
-                    <span class="font-extrabold text-2xl tracking-tight">{{ m.title }}</span>
+                    <span class="font-extrabold text-2xl tracking-tight">{% if m.due_at %}<span class="text-base font-bold opacity-60">{{ m.due_at.strftime('%H:%M') }}</span> {% endif %}{{ m.title }}</span>
                     <button onclick="completar('{{m.id}}')" class="w-12 h-12 bg-black/10 rounded-2xl flex items-center justify-center font-bold">✓</button>
                 </div>
                 {% endfor %}
@@ -81,7 +81,7 @@
                     <h3 class="text-[10px] font-black text-zinc-800 uppercase tracking-widest mb-4 ml-4">Hábitos</h3>
                     {% for h in habits %}
                     <div class="card-glass p-6 mb-3 flex justify-between items-center">
-                        <span class="font-bold text-zinc-200 text-lg">{{ h.title }}</span>
+                        <span class="font-bold text-zinc-200 text-lg">{% if h.due_at %}<span class="text-sm text-orange-400/70">{{ h.due_at.strftime('%H:%M') }}</span> {% endif %}{{ h.title }}</span>
                         <button onclick="completar('{{h.id}}')" class="w-8 h-8 rounded-full border-2 border-orange-500/30 flex items-center justify-center">
                             <div class="w-2.5 h-2.5 bg-orange-500 rounded-full"></div>
                         </button>
@@ -94,7 +94,7 @@
                     {% for t in tasks %}
                     <div class="card-glass p-6 mb-3 flex items-center">
                         <input type="checkbox" onchange="completar('{{t.id}}')" class="w-6 h-6 rounded-lg border-2 border-zinc-800 bg-transparent appearance-none checked:bg-blue-600 mr-5 transition-colors">
-                        <span class="font-bold text-zinc-500 text-lg">{{ t.title }}</span>
+                        <span class="font-bold text-zinc-500 text-lg">{% if t.due_at %}<span class="text-sm text-blue-400/70">{{ t.due_at.strftime('%H:%M') }}</span> {% endif %}{{ t.title }}</span>
                     </div>
                     {% endfor %}
                 </section>

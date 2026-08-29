@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Time,
     UniqueConstraint,
     create_engine,
     text,
@@ -77,12 +78,26 @@ class TeamMemberModel(Base):
     joined_at = Column(DateTime, default=datetime.now)
 
 
+class HabitModel(Base):
+    """Definición de un hábito recurrente. Cada día genera una instancia en `tasks`."""
+    __tablename__ = "habits"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String, nullable=False)
+    target_time = Column(Time, nullable=True)   # hora del día para el recordatorio (None = sin hora)
+    active = Column(Boolean, nullable=False, server_default=text("true"), default=True)
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (Index("ix_habits_user_active", "user_id", "active"),)
+
+
 class TaskModel(Base):
     __tablename__ = "tasks"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
     assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    habit_id = Column(Integer, ForeignKey("habits.id"), nullable=True)
     title = Column(String)
     category = Column(String)
     is_habit = Column(Boolean, default=False)

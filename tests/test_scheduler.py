@@ -1,15 +1,9 @@
 """Task 8: reminder_sweep manda avisos de tareas vencidas y marca reminder_sent."""
 import asyncio
-import os
-import pathlib
 from datetime import datetime, timedelta
 
-_DB = pathlib.Path(__file__).parent / "test_scheduler.db"
-_DB.unlink(missing_ok=True)
-os.environ["DATABASE_URL"] = f"sqlite:///{_DB.as_posix()}"
-
-from src.flowtask import main, scheduler  # noqa: E402  -> init_db()
-from src.flowtask.infrastructure.database import (  # noqa: E402
+from src.flowtask import scheduler
+from src.flowtask.infrastructure.database import (
     SessionLocal,
     TaskModel,
     get_or_create_user,

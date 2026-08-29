@@ -192,7 +192,7 @@ políticas ahora sería contra columnas inexistentes. Lo que sí aporta valor ho
 
 ## Fase 2: Fechas naturales + recordatorios
 
-Progreso: [x] Task 7  ·  [x] Task 8  ·  [ ] Task 9
+Progreso: [x] Task 7  ·  [x] Task 8  ·  [x] Task 9  — Fase 2 COMPLETA
 
 ### Task 7: Parser de fecha/hora en español + `due_at` / `reminder_sent` — CÓDIGO HECHO (2026-08-29)
 
@@ -260,31 +260,40 @@ APScheduler en la BD + líos de pickle/pooler).
 
 ---
 
-### Task 9: Hábitos recurrentes diarios + hora visible en `/list` y dashboard
+### Task 9: Hábitos recurrentes + hora visible en `/list` y dashboard — HECHA (2026-08-29)
 
-**Description:** Un job diario a las 00:05 que, por cada `HABIT` activo, crea la instancia del día con
-su `due_at` (hora fijada al crear el hábito). `/list` y el dashboard muestran la hora de cada tarea y
-ordenan por `due_at`.
+**Description:** Tabla `habits` (definición del hábito). Job diario 00:05 que genera la instancia del
+día en `tasks`. `/list` y dashboard muestran la hora y ordenan por `due_at`.
 
 **Acceptance criteria:**
-- [ ] `tasks` (o tabla `habits`) guarda la hora objetivo del hábito y su estado activo
-- [ ] Job `habit_rollover` genera las instancias del día sin duplicar si ya existen
-- [ ] `get_pending_tasks_summary` ordena por `due_at` y muestra `HH:MM`
-- [ ] Dashboard muestra la hora junto a cada ítem
+- [x] Migración `0006_habits`: tabla `habits` (user_id, title, target_time, active) + `tasks.habit_id` FK. `alembic check` limpio. Aplicada a Supabase (`0006_habits (head)`).
+- [x] `src/flowtask/habits.py`: `create_habit` (alta + genera la instancia de hoy), `rollover_habits` (idempotente, salta inactivos), `_ensure_today_instance`
+- [x] Webhook: si `ai_res.is_habit` → `habits.create_habit(...)` con la hora extraída por `nlp`; si no, tarea normal
+- [x] Scheduler: job `habit_rollover` (`cron` 00:05, `id` fijo, `replace_existing`)
+- [x] `get_pending_tasks_summary` ordena por `due_at` y prefija `HH:MM`
+- [x] `dashboard.html` + query: cada ítem muestra `HH:MM` si tiene `due_at`, ordenados por hora
 
 **Verification:**
-- [ ] Test `pytest`: correr `habit_rollover` dos veces el mismo día no duplica
-- [ ] Manual: crear hábito "leer 15 min a las 17:00", al día siguiente aparece con recordatorio
+- [x] `pytest tests/test_habits.py` → 5 passed (alta genera instancia de hoy, rollover no duplica, rollover crea la del día, hábito inactivo no se regenera, `/list` muestra la hora)
+- [x] `pytest -q` total: 32 passed, 2 skipped
+- [x] Smoke: webhook "leer ... cada día a las 17:00" → fila en `habits` + instancia en `tasks` con `is_habit`, `category=HABIT`, `habit_id`; dashboard 200; scheduler registra `habit_rollover`
+- [ ] **TÚ (manual):** crear hábito con hora, al día siguiente aparece con recordatorio (requiere webhook público / Task 19)
+
+**Bug arreglado de paso:** aislamiento entre archivos de test (todos compartían BD por el `os.environ`
+en cada módulo). Ahora hay `tests/conftest.py` con BD única + limpieza de tablas entre tests.
+**`nlp.parse_when` mejorado:** quita "cada día / todos los días", entiende "17hs", y elige el último
+match ignorando duraciones sueltas ("15 min") → "leer 15 min cada día a las 17:00" ahora da 17:00.
 
 **Dependencies:** Task 8
-**Files likely touched:** `src/flowtask/scheduler.py`, `src/flowtask/main.py`, `src/flowtask/templates/dashboard.html`, `migrations/versions/0006_habits.py`, `tests/test_habits.py`
+**Files likely touched:** `src/flowtask/habits.py`, `src/flowtask/scheduler.py`, `src/flowtask/nlp.py`, `src/flowtask/main.py`, `src/flowtask/infrastructure/database.py`, `src/flowtask/templates/dashboard.html`, `migrations/versions/0006_habits.py`, `tests/conftest.py`, `tests/test_habits.py`, `tests/test_nlp.py`
 **Estimated scope:** Medium
 
-### Checkpoint: Fase 2
-- [ ] `pytest tests/ -q` verde
-- [ ] Un recordatorio real llega al chat a la hora fijada
-- [ ] Un hábito recurrente se regenera y recuerda al día siguiente
-- [ ] Revisión con humano
+### Checkpoint: Fase 2 — COMPLETA (2026-08-29)
+- [x] `pytest -q` verde (32 passed, 2 skipped)
+- [x] Migraciones al día en Supabase (`0006_habits`)
+- [ ] **TÚ (manual, Task 19):** un recordatorio real llega al chat a la hora fijada
+- [ ] **TÚ (manual, Task 19):** un hábito se regenera y recuerda al día siguiente
+- [ ] **Revisión con humano** antes de la Fase 3
 
 ---
 

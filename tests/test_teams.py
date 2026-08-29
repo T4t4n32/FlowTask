@@ -1,14 +1,8 @@
 """Task 5: equipos — crear, unirse por código, aislamiento y notificación."""
 import asyncio
-import os
-import pathlib
 
-_DB = pathlib.Path(__file__).parent / "test_teams.db"
-_DB.unlink(missing_ok=True)
-os.environ["DATABASE_URL"] = f"sqlite:///{_DB.as_posix()}"
-
-from src.flowtask import main, teams  # noqa: E402  -> init_db() aplica migraciones
-from src.flowtask.infrastructure.database import (  # noqa: E402
+from src.flowtask import main, teams
+from src.flowtask.infrastructure.database import (
     SessionLocal,
     TaskModel,
     get_or_create_user,

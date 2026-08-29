@@ -17,7 +17,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
 sys.path.append(PROJECT_ROOT)
 
-from src.flowtask import nlp, scheduler, teams
+from src.flowtask import habits, nlp, scheduler, teams
 from src.flowtask.infrastructure.ai_engine import AIEngine
 from src.flowtask.infrastructure.database import (
     init_db,
@@ -56,20 +56,25 @@ def get_pending_tasks_summary(user_id: int, team_id: int | None = None):
             q = q.filter(TaskModel.user_id == user_id, TaskModel.team_id.is_(None))
         else:
             q = q.filter(TaskModel.team_id == team_id)
-        items = q.all()
+        # ordenar por hora (las tareas sin due_at, al final)
+        items = sorted(q.all(), key=lambda i: i.due_at or datetime.max)
 
         if not items:
             return "👍 *Todo limpio.* No tienes tareas pendientes hoy."
 
-        mango = [i.title for i in items if i.category == "MANGO_REL"]
-        habits = [i.title for i in items if i.is_habit]
-        tasks = [i.title for i in items if i.category == "TASK" and not i.is_habit]
+        def line(i):
+            hora = f"{i.due_at.strftime('%H:%M')} " if i.due_at else ""
+            return f"- {hora}{i.title}"
+
+        mango = [line(i) for i in items if i.category == "MANGO_REL"]
+        habits = [line(i) for i in items if i.is_habit]
+        tasks = [line(i) for i in items if i.category == "TASK" and not i.is_habit]
 
         msg = f"📅 *Resumen del {today.strftime('%d/%m')}*\n\n"
-        if mango: msg += "🥭 *PRIORIDAD MANGO*\n" + "\n".join([f"- {t}" for t in mango]) + "\n\n"
-        if habits: msg += "🔄 *HÁBITOS*\n" + "\n".join([f"- {t}" for t in habits]) + "\n\n"
-        if tasks: msg += "✅ *TAREAS*\n" + "\n".join([f"- {t}" for t in tasks])
-        
+        if mango: msg += "🥭 *PRIORIDAD MANGO*\n" + "\n".join(mango) + "\n\n"
+        if habits: msg += "🔄 *HÁBITOS*\n" + "\n".join(habits) + "\n\n"
+        if tasks: msg += "✅ *TAREAS*\n" + "\n".join(tasks)
+
         return msg
     finally:
         db.close()
@@ -92,7 +97,7 @@ async def view_dashboard(request: Request, user_id: int, date_param: Optional[st
             TaskModel.user_id == user_id,
             TaskModel.team_id.is_(None),
             func.date(TaskModel.created_at) == target_date,
-        ).all()
+        ).order_by(TaskModel.due_at.is_(None), TaskModel.due_at).all()
         
         mango = [i for i in items if i.category == "MANGO_REL" and not i.completed]
         habits = [i for i in items if i.is_habit and not i.completed]
@@ -198,14 +203,21 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
 
         # Si es una tarea válida (SAVE), guardamos
         due_at = nlp.parse_when(text)
-        save_to_db(ai_res, user_id, due_at)
 
-        icons = {"MANGO_REL": "🥭 *MANGO*", "HABIT": "🔄 *HÁBITO*", "TASK": "✅ *TAREA*"}
-        msg = f"{icons.get(ai_res.category, '📌')}\n\n*Registrado:* {ai_res.clean_title}"
-        if due_at:
-            msg += f"\n⏰ para el {due_at.strftime('%d/%m a las %H:%M')}"
+        if ai_res.is_habit:
+            # Hábito: se guarda la definición y se genera ya la instancia de hoy.
+            habits.create_habit(user_id, ai_res.clean_title, due_at.time() if due_at else None)
+            msg = f"🔄 *Hábito* registrado: {ai_res.clean_title}"
+            if due_at:
+                msg += f"\n⏰ cada día a las {due_at.strftime('%H:%M')}"
+        else:
+            save_to_db(ai_res, user_id, due_at)
+            icons = {"MANGO_REL": "🥭 *MANGO*", "TASK": "✅ *TAREA*"}
+            msg = f"{icons.get(ai_res.category, '📌')}\n\n*Registrado:* {ai_res.clean_title}"
+            if due_at:
+                msg += f"\n⏰ para el {due_at.strftime('%d/%m a las %H:%M')}"
 
-        background_tasks.add_task(send_message, "telegram", chat_id,msg)
+        background_tasks.add_task(send_message, "telegram", chat_id, msg)
 
     except Exception as e:
         logger.error(f"Falla Webhook: {e}")
