@@ -15,6 +15,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     create_engine,
+    or_,
     text,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -194,6 +195,62 @@ def get_or_create_user(platform: str, chat_id, display_name: str = "") -> int:
             db.commit()
             db.refresh(user)
         return user.id
+    finally:
+        db.close()
+
+
+def _owned_task(db, task_id: int, user_id: int):
+    return (
+        db.query(TaskModel)
+        .filter(
+            TaskModel.id == task_id,
+            or_(TaskModel.user_id == user_id, TaskModel.assignee_id == user_id),
+        )
+        .first()
+    )
+
+
+def complete_task(task_id: int, user_id: int):
+    """Marca completa si el usuario es dueño/asignado. Devuelve (título, team_id) o None."""
+    db = SessionLocal()
+    try:
+        t = _owned_task(db, task_id, user_id)
+        if t is None:
+            return None
+        t.completed = True
+        db.commit()
+        return t.title, t.team_id
+    finally:
+        db.close()
+
+
+def delete_task(task_id: int, user_id: int) -> str | None:
+    """Borra la tarea si el usuario es dueño/asignado. Devuelve el título o None."""
+    db = SessionLocal()
+    try:
+        t = _owned_task(db, task_id, user_id)
+        if t is None:
+            return None
+        title = t.title
+        db.delete(t)
+        db.commit()
+        return title
+    finally:
+        db.close()
+
+
+def postpone_task(task_id: int, user_id: int, due_at) -> str | None:
+    """Cambia la fecha/hora de la tarea y reactiva el recordatorio."""
+    db = SessionLocal()
+    try:
+        t = _owned_task(db, task_id, user_id)
+        if t is None:
+            return None
+        t.due_at = due_at
+        t.reminder_sent = False
+        t.completed = False
+        db.commit()
+        return t.title
     finally:
         db.close()
 

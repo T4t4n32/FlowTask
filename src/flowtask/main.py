@@ -25,7 +25,10 @@ from src.flowtask import convo_state, habits, nlp, pairing, poller, projects, sc
 from src.flowtask.config import settings
 from src.flowtask.infrastructure.ai_engine import AIEngine
 from src.flowtask.infrastructure.database import (
+    complete_task,
+    delete_task,
     init_db,
+    postpone_task,
     SessionLocal,
     TaskModel,
     get_or_create_user,
@@ -71,6 +74,94 @@ def _base_url() -> str:
     return f"http://{ip}:8000"
 
 
+HELP = (
+    "🤖 *FlowTask* — tu asistente por chat.\n\n"
+    "*Escríbeme normal:*\n"
+    "• `Pagar la luz mañana a las 9am` → tarea con recordatorio\n"
+    "• `Leer 20 min cada día a las 22:00` → hábito diario\n"
+    "• `Para <proyecto>, hacer X` → tarea dentro de un proyecto\n\n"
+    "*Comandos:*\n"
+    "• `/list` — tus tareas de hoy (con su `#número`)\n"
+    "• `/hecho #` — marcar una tarea como hecha\n"
+    "• `/posponer # <cuándo>` — mover una tarea\n"
+    "• `/borrar #` — eliminar una tarea\n"
+    "• `/habitos` — ver hábitos · `/habito # off|on|borrar`\n"
+    "• `/proyecto` — crear un proyecto (meta → rúbrica → fecha)\n"
+    "• `/proyectos` — progreso de proyectos\n"
+    "• `/equipo crear|unir|listar` — equipos\n"
+    "• `/ayuda` — este mensaje"
+)
+
+
+def _first_int(text: str):
+    m = re.search(r"#?(\d+)", text)
+    return int(m.group(1)) if m else None
+
+
+async def handle_task_command(user_id: int, text: str) -> str:
+    """/hecho, /borrar, /posponer, /habitos, /habito."""
+    low = text.lower()
+    tid = _first_int(text)
+
+    if low.startswith(("/hecho", "/completar", "/done")):
+        if tid is None:
+            return "Uso: `/hecho #` (mira el número con `/list`)."
+        res = complete_task(tid, user_id)
+        if res is None:
+            return f"No encuentro la tarea `#{tid}`."
+        title, team_id = res
+        if team_id is not None:
+            contact = teams.owner_contact(team_id)
+            if contact and contact[0] == "telegram":
+                await send_message("telegram", contact[1],
+                                   f"✅ Tarea de equipo completada: *{title}*")
+        return f"✅ Hecho: *{title}*"
+
+    if low.startswith(("/borrar", "/eliminar")):
+        if tid is None:
+            return "Uso: `/borrar #`."
+        title = delete_task(tid, user_id)
+        return f"🗑️ Borrada: *{title}*" if title else f"No encuentro la tarea `#{tid}`."
+
+    if low.startswith(("/posponer", "/pospon", "/pospón")):
+        if tid is None:
+            return "Uso: `/posponer # <cuándo>` (ej. `/posponer 42 mañana 10am`)."
+        cuando = re.sub(r"^\S+\s+#?\d+\s*", "", text).strip()
+        due = nlp.parse_when(cuando)
+        if due is None:
+            return "No entendí el *cuándo*. Ej: `/posponer 42 mañana a las 10`."
+        title = postpone_task(tid, user_id, due)
+        if not title:
+            return f"No encuentro la tarea `#{tid}`."
+        return f"⏰ *{title}* movida a {due.strftime('%d/%m a las %H:%M')}"
+
+    if low.startswith(("/habitos", "/hábitos")):
+        hs = habits.list_habits(user_id)
+        if not hs:
+            return "No tienes hábitos. Crea uno: `Leer cada día a las 22:00`."
+        out = ["🔄 *Tus hábitos:*"]
+        for h in hs:
+            hora = h["target_time"].strftime("%H:%M") if h["target_time"] else "sin hora"
+            estado = "✅" if h["active"] else "⏸️"
+            out.append(f"{estado} `#{h['id']}` {hora} — {h['title']}")
+        out.append("\n_/habito # off_ · _/habito # on_ · _/habito # borrar_")
+        return "\n".join(out)
+
+    if low.startswith(("/habito", "/hábito")):
+        if tid is None:
+            return "Uso: `/habito # off|on|borrar`."
+        if "borrar" in low or "eliminar" in low:
+            title = habits.delete_habit(tid, user_id)
+            return f"🗑️ Hábito borrado: *{title}*" if title else f"No encuentro el hábito `#{tid}`."
+        active = "on" in low.split() or "activar" in low
+        title = habits.set_active(tid, user_id, active)
+        if not title:
+            return f"No encuentro el hábito `#{tid}`."
+        return f"{'✅ Activado' if active else '⏸️ Pausado'}: *{title}*"
+
+    return HELP
+
+
 _NO_TOKEN_HTML = (
     "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
     "<body style='background:#000;color:#fff;font-family:system-ui;display:flex;align-items:center;"
@@ -100,7 +191,7 @@ def get_pending_tasks_summary(user_id: int, team_id: int | None = None):
 
         def line(i):
             hora = f"{i.due_at.strftime('%H:%M')} " if i.due_at else ""
-            return f"- {hora}{i.title}"
+            return f"`#{i.id}` {hora}{i.title}"
 
         habits = [line(i) for i in items if i.is_habit]
         tasks = [line(i) for i in items if not i.is_habit]
@@ -108,6 +199,7 @@ def get_pending_tasks_summary(user_id: int, team_id: int | None = None):
         msg = f"📅 *Resumen del {today.strftime('%d/%m')}*\n\n"
         if habits: msg += "🔄 *HÁBITOS*\n" + "\n".join(habits) + "\n\n"
         if tasks: msg += "✅ *TAREAS*\n" + "\n".join(tasks)
+        msg += "\n\n_/hecho #_ · _/posponer # <cuándo>_ · _/borrar #_"
 
         return msg
     finally:
@@ -368,6 +460,15 @@ async def handle_incoming_message(
     user_id = get_or_create_user(platform, chat_id, display_name)
 
     # --- 1. COMANDOS ---
+    if text.startswith(("/start", "/ayuda", "/help")):
+        return HELP
+
+    if text.startswith(
+        ("/hecho", "/completar", "/done", "/borrar", "/eliminar",
+         "/posponer", "/pospon", "/pospón", "/habito", "/hábito")
+    ):
+        return await handle_task_command(user_id, text)
+
     if text.startswith("/vincular") or text.startswith("/app"):
         if not settings.WEB_ENABLED:
             return "El panel web está desactivado por ahora. Usa el chat."

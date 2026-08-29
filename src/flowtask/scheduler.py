@@ -31,7 +31,7 @@ async def reminder_sweep() -> None:
             user = db.get(UserModel, task.assignee_id or task.user_id)
             if user is None:
                 continue
-            text = f"⏰ *Recordatorio:* {task.title}"
+            text = f"⏰ *Recordatorio:* {task.title}\n_/hecho {task.id} · /posponer {task.id} <cuándo>_"
             if await send_message(user.platform, user.chat_id, text):
                 task.reminder_sent = True  # solo si el envío fue OK
                 db.commit()

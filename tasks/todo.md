@@ -8,6 +8,37 @@ Comandos del repo:
 
 ---
 
+## ✅ V1 (chat) — TERMINADA (2026-08-29)
+
+FlowTask V1 = **bot de Telegram, sin panel web** (`WEB_ENABLED=0`). Corre 24/7 en máquina propia
+por long-polling. 86 tests en verde.
+
+**Funciona:**
+- Crear tareas/hábitos escribiendo normal; fechas en lenguaje natural; recordatorios (±30 s)
+- **Gestión desde el chat:** `/list` (con `#id`), `/hecho #`, `/borrar #`, `/posponer # <cuándo>`
+- **Hábitos:** `/habitos`, `/habito # on|off|borrar`; regeneración diaria 00:05
+- **Proyectos:** `/proyecto` (asistente meta→rúbrica→fecha→plan IA/fallback), `/proyectos`, `Para X, tarea`
+- **Equipos:** `/equipo crear|unir|listar`, reparto de tareas por carga, aviso al dueño al completar
+- `/ayuda` y `/start` → menú
+- El recordatorio incluye `/hecho #` para cerrarlo
+
+**Diferido a V2:** panel web/PWA (código hecho, `WEB_ENABLED=0`), WhatsApp, políticas RLS por
+`auth.uid()`, la limpieza del scaffold `.github/` (ver auditoría).
+
+**Pendiente de calidad (no bloquea V1):** Task 20 (suite de tests + arreglar `ci.yml`).
+
+### Task V1-final: Gestión de tareas desde el chat + /ayuda — HECHA (2026-08-29)
+- [x] `/list` numera con `#id` (estable, restart-safe)
+- [x] `database.complete_task / delete_task / postpone_task` (verifican dueño/asignado)
+- [x] `handle_task_command`: `/hecho`, `/borrar`, `/posponer` (parsea el «cuándo» con `nlp`), `/habitos`, `/habito # on|off|borrar`
+- [x] `/hecho` de tarea de equipo notifica al dueño (paridad con el panel)
+- [x] `/ayuda` `/start` `/help` → `HELP`
+- [x] El recordatorio del scheduler incluye `/hecho #`
+- [x] `tests/test_tasks_cmd.py` (9): ayuda, `#id` en list, hecho, no-completar-ajena, borrar, posponer (+reactiva recordatorio), habitos on/off/borrar
+- [ ] **TÚ:** re-probar en el bot real (`/list` → `/hecho #`, `/habitos`, `/ayuda`)
+
+---
+
 ## Fase 0: Fundaciones
 
 Progreso: [x] Task 1  ·  [~] Task 2 (código hecho; falta que TÚ crees Supabase/Railway)

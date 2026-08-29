@@ -53,6 +53,54 @@ def create_habit(user_id: int, title: str, target_time: time | None) -> dict:
         db.close()
 
 
+def list_habits(user_id: int) -> list[dict]:
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(HabitModel)
+            .filter(HabitModel.user_id == user_id)
+            .order_by(HabitModel.id)
+            .all()
+        )
+        return [
+            {"id": h.id, "title": h.title, "target_time": h.target_time, "active": h.active}
+            for h in rows
+        ]
+    finally:
+        db.close()
+
+
+def set_active(habit_id: int, user_id: int, active: bool) -> str | None:
+    db = SessionLocal()
+    try:
+        h = db.query(HabitModel).filter_by(id=habit_id, user_id=user_id).first()
+        if h is None:
+            return None
+        h.active = active
+        db.commit()
+        return h.title
+    finally:
+        db.close()
+
+
+def delete_habit(habit_id: int, user_id: int) -> str | None:
+    """Borra el hábito y sus tareas de hoy aún pendientes."""
+    db = SessionLocal()
+    try:
+        h = db.query(HabitModel).filter_by(id=habit_id, user_id=user_id).first()
+        if h is None:
+            return None
+        title = h.title
+        db.query(TaskModel).filter(
+            TaskModel.habit_id == habit_id, TaskModel.completed == False  # noqa: E712
+        ).delete()
+        db.delete(h)
+        db.commit()
+        return title
+    finally:
+        db.close()
+
+
 def rollover_habits() -> int:
     """Genera la instancia de hoy para cada hábito activo. Idempotente. Devuelve cuántas creó."""
     db = SessionLocal()
