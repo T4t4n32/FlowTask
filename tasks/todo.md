@@ -532,26 +532,32 @@ tokens del usuario vía la API de Expo Push.
 
 ## Fase 6: Deploy y calidad
 
-### Task 19: Deploy en Railway (web + scheduler)
+> **Reorden (2026-08-29):** la Task 19 se hizo antes de la Fase 5. Hosting = máquina propia
+> encendida, no Railway. Bot por long-polling (sin URL pública).
 
-**Description:** `Procfile` / config de Railway para el proceso web con el scheduler embebido. Todas las
-env vars cargadas. Pooler de Supabase (6543). Healthcheck. `alembic upgrade head` en el release.
+### Task 19: Correr 24/7 en máquina propia (long-polling) — CÓDIGO HECHO (2026-08-29)
+
+**Description:** Modo polling para no necesitar URL pública. Un solo proceso `uvicorn` levanta bot +
+scheduler + panel web. Datos en Supabase.
 
 **Acceptance criteria:**
-- [ ] Deploy en Railway sirve el webhook con HTTPS y URL estable
-- [ ] Webhook de Telegram apuntando a la URL de Railway
-- [ ] `alembic upgrade head` corre en cada release (release command / pre-deploy)
-- [ ] Una sola réplica; documentado el paso a worker aparte si se escala
-- [ ] Healthcheck `/health` que verifica DB y scheduler vivo
+- [x] `src/flowtask/poller.py`: `run(handler, sender)` — `getUpdates` con `offset`, `deleteWebhook` al arrancar, tolera errores de red (reintenta)
+- [x] `config.TELEGRAM_POLLING` (env, default `0`); `main.py` lifespan arranca el poller como task si está en `1`
+- [x] El endpoint `/webhook/telegram` sigue existiendo (modo webhook con `TELEGRAM_POLLING=0`)
+- [x] `run.bat` + sección README "Correr 24/7 en una máquina propia" (carpeta de Inicio / Programador de tareas)
+- [x] `.env.example`: `TELEGRAM_POLLING=1`
 
 **Verification:**
-- [ ] Manual: mensaje real por Telegram contra producción, con recordatorio a la hora fijada
-- [ ] Logs de Railway sin errores de conexión a Supabase
+- [x] `pytest tests/test_poller.py` → 5 passed (dispatch llama handler+sender; ignora updates sin texto; no envía si respuesta vacía; tolera error del handler; `run` avanza el offset)
+- [x] `pytest -q` total: 61 passed, 2 skipped
+- [x] Smoke: `uvicorn` con `TELEGRAM_POLLING=1` + token falso → arranca scheduler + poller, `getUpdates` da 404 (token falso), reintenta sin crashear, dashboard 200
+- [ ] **TÚ:** en tu `.env` poner `TELEGRAM_POLLING=1` (+ `GEMINI_MODEL=gemini-flash-lite-latest`), correr `run.bat`, y mandarle un mensaje real al bot desde tu Telegram → debe responder
+- [ ] **TÚ:** dejar la máquina encendida y verificar que un recordatorio llega a su hora
+- [ ] **TÚ:** poner `run.bat` en la carpeta de Inicio de Windows
 
-**Dependencies:** Task 18
-**Files likely touched:** `Procfile`, `railway.json`/`railway.toml`, `src/flowtask/main.py`, `README.md`
+**Dependencies:** Task 8 (scheduler), Task 10 (núcleo agnóstico)
+**Files likely touched:** `src/flowtask/poller.py`, `src/flowtask/main.py`, `src/flowtask/config.py`, `.env.example`, `run.bat`, `README.md`, `tests/test_poller.py`
 **Estimated scope:** Small
-**Skills:** `use-railway`
 
 ---
 

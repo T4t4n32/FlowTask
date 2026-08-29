@@ -10,6 +10,9 @@ load_dotenv()
 class Settings:
     # Telegram
     TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_TOKEN", "").strip()
+    # "1" = el proceso hace long-polling a Telegram (máquina propia, sin URL pública).
+    # "0" = modo webhook (necesita URL pública; el endpoint /webhook/telegram sigue existiendo).
+    TELEGRAM_POLLING: bool = os.getenv("TELEGRAM_POLLING", "0").strip() == "1"
 
     # IA (Google Gemini). Aliases "-latest" para no chocar con deprecaciones:
     #   gemini-flash-lite-latest = barato, suficiente para clasificar (default)

@@ -24,9 +24,11 @@ El trabajo se corta en **rebanadas verticales**: cada fase deja el bot funcionan
 - **Identidad = cuenta de chat.** `users` se crea/upsertea al primer mensaje desde un `(platform, chat_id)`.
   La app móvil usa Supabase Auth y enlaza su `auth.uid` a esa fila `users` con un código de vinculación
   enviado por el bot. No se construye login propio.
-- **Un solo proceso en Railway** (web + `AsyncIOScheduler` en el `startup`). El jobstore de APScheduler
-  vive en Postgres para sobrevivir reinicios. Una sola réplica hasta que el volumen lo exija (evita
-  doble envío de recordatorios); si hace falta escalar, `pg_advisory_lock` alrededor del barrido.
+- **Hosting: máquina propia siempre encendida** (decidido 2026-08-29), no Railway. Un solo proceso
+  `uvicorn` levanta: bot de Telegram (long-polling, `TELEGRAM_POLLING=1`, sin URL pública) +
+  `AsyncIOScheduler` + panel web local. Datos en Supabase para persistir entre reinicios.
+  Sin jobstore persistente de APScheduler: el único job se re-registra en cada arranque.
+  Una sola instancia; si algún día hay varias, `pg_advisory_lock` alrededor del barrido.
 - **Recordatorios por barrido, no un job por tarea.** Un job cada 60 s:
   `SELECT ... WHERE due_at <= now() AND reminder_sent = false`. Menos estado, menos jobs huérfanos.
 - **Solo Telegram por ahora** (gratis, sin trámites ni mensualidades). Aun así se hace el refactor a un
@@ -95,7 +97,7 @@ Tareas y checkpoints en `tasks/todo.md`. Orden = orden de implementación.
 | `capacitor-push-notifications` no sirve para Expo | Medio | Usar `expo-notifications`; o construir la app con Capacitor en vez de RN (Open Question) |
 | Gemini 1.5 Flash en retirada / cambio de nombre de modelo | Medio | Aislar el nombre del modelo en config; probar `gemini-2.0-flash` |
 | `dateparser` en español: ambigüedad "el jueves", "en 3 días" | Medio | `PREFER_DATES_FROM=future`, `languages=['es']`, confirmar la fecha interpretada en la respuesta del bot |
-| Hosting 24/7 para recordatorios no es gratis del todo (Railway ~5 USD/mes; tiers gratis "duermen" y matan los recordatorios) | Medio | Empezar en local o en una máquina siempre encendida; revisar hosting antes de publicar |
+| Hosting = máquina propia encendida (decidido). Si se apaga, los recordatorios no salen esa ventana; el barrido recupera lo atrasado al volver | Bajo | Dejar la máquina encendida; el barrido de 60 s recupera lo vencido tras un corte |
 | Migrar datos SQLite existentes | Bajo | Es una demo; empezar Postgres limpio, script de import opcional |
 | `TaskModel` sin `user_id` hoy → toda query actual asume 1 usuario | Alto | Task 4 toca todas las queries de `main.py`; sin ella el resto de fases arrastran el bug |
 
@@ -103,12 +105,16 @@ Tareas y checkpoints en `tasks/todo.md`. Orden = orden de implementación.
 
 - **App móvil: Expo (React Native)**, push con `expo-notifications`.
 - **Canal: solo Telegram** por ahora (gratis, sin trámites). WhatsApp diferido.
-- **Una sola réplica en Railway.** Scheduler embebido en el proceso web.
 - **La app móvil pega a la API de FlowTask**, no a Supabase directo.
+
+## Decisiones tomadas (2026-08-29)
+
+- **Hosting: máquina propia siempre encendida** (no Railway). Bot por long-polling (`TELEGRAM_POLLING=1`),
+  sin URL pública. `run.bat` + carpeta de Inicio de Windows.
+- **Reorden: la Task 19 (deploy) se hace antes de la Fase 5**, para verificar Fases 1-4 con Telegram real
+  y darle a la app móvil una API contra la que trabajar.
 
 ## Open Questions
 
-- **¿Hosting definitivo?** Railway no es 100% gratis (~5 USD/mes) y los tiers gratis que "duermen"
-  rompen los recordatorios. Para desarrollo: local. Decidir antes de publicar.
 - **¿Login propio o identidad de chat + Supabase Auth?** El plan asume identidad de chat con
   vinculación por código de un solo uso.

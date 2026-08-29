@@ -48,6 +48,22 @@ Al arrancar, la app llama a `alembic upgrade head` automáticamente (`init_db()`
 venv\Scripts\python -m uvicorn src.flowtask.main:app --reload
 ```
 
+### Correr 24/7 en una máquina propia (sin Railway ni URL pública)
+
+Con `TELEGRAM_POLLING=1` en el `.env`, el proceso pregunta a Telegram por mensajes
+nuevos (long-polling) — **no hace falta abrir puertos ni tener dominio**. Un solo
+proceso levanta: bot de Telegram + scheduler de recordatorios + panel web local.
+
+```bash
+venv\Scripts\python -m uvicorn src.flowtask.main:app --host 127.0.0.1 --port 8000
+```
+
+Para que arranque solo al encender el equipo (Windows): pon un acceso directo a
+`run.bat` en la carpeta de Inicio (`Win+R` → `shell:startup`), o crea una tarea
+"Al iniciar sesión" en el Programador de tareas apuntando a `run.bat`.
+
+`DATABASE_URL` debe apuntar a Supabase para que los datos persistan entre reinicios.
+
 ### Seguridad de datos (RLS)
 
 La barrera **primaria** es el filtrado por `user_id` en la API (`main.py`). Encima, la migración

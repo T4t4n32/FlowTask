@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import logging
@@ -17,7 +18,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
 sys.path.append(PROJECT_ROOT)
 
-from src.flowtask import convo_state, habits, nlp, projects, scheduler, teams
+from src.flowtask import convo_state, habits, nlp, poller, projects, scheduler, teams
+from src.flowtask.config import settings
 from src.flowtask.infrastructure.ai_engine import AIEngine
 from src.flowtask.infrastructure.database import (
     init_db,
@@ -32,7 +34,12 @@ from src.flowtask.messaging import send_message
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler.start()
+    poll_task = None
+    if settings.TELEGRAM_POLLING:
+        poll_task = asyncio.create_task(poller.run(handle_incoming_message, send_message))
     yield
+    if poll_task:
+        poll_task.cancel()
     scheduler.shutdown()
 
 
