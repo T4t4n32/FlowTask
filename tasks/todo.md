@@ -344,22 +344,25 @@ adaptador `whatsapp.py` + endpoint `/webhook/whatsapp`, sin tocar la lógica.
 
 ## Fase 4: Descomposición de metas/proyectos
 
-### Task 12: Tabla `projects` + `ai_engine.decompose_goal()`
+Progreso: [x] Task 12  ·  [ ] Task 13  ·  [ ] Task 14
 
-**Description:** `projects` (id, user_id, team_id NULL, title, rubric TEXT, deadline DATE, created_at).
-`tasks.project_id` NULL FK. Nueva función `decompose_goal(goal, rubric, deadline) -> list[GeneratedTask]`
-que llama a Gemini y devuelve tareas con título, `due_at` sugerido y nota de por qué. Prompt que exige
-JSON y reparte el trabajo entre hoy y `deadline` sin dejar todo para el final.
+### Task 12: Tabla `projects` + `ai_engine.decompose_goal()` — HECHA (2026-08-29)
+
+**Description:** `projects` (user_id, team_id NULL, title, rubric TEXT, deadline DATE). `tasks.project_id`
+NULL FK. `decompose_goal(goal, rubric, deadline) -> list[GeneratedTask]` llama a Gemini y reparte el
+trabajo entre hoy y `deadline`.
 
 **Acceptance criteria:**
-- [ ] Migración `0007`: `projects` + `tasks.project_id`
-- [ ] `decompose_goal` devuelve entre 3 y N tareas, todas con `due_at` <= `deadline` y >= hoy
-- [ ] Maneja fallo de la IA con un fallback (p.ej. dividir el rango en hitos semanales)
-- [ ] El JSON de la IA se valida con Pydantic antes de persistir
+- [x] Migración `0007_projects`: `projects` + `tasks.project_id`. `alembic check` limpio. Aplicada a Supabase (`0007_projects (head)`).
+- [x] `GeneratedTask` (pydantic: title, due_date, note). `decompose_goal` valida cada item con pydantic, ordena por fecha y **clampa `due_date` a `[hoy, deadline]`**
+- [x] Fallback si la IA falla o devuelve <3 tareas: `_fallback_plan` con 2-6 hitos repartidos por el rango
+- [x] `src/flowtask/projects.py`: `create_project` (persiste la meta + una fila en `tasks` por tarea generada, `due_at` = due_date @ 09:00, `category=TASK`), `list_projects` (con progreso hechas/total)
+- [x] Refactor menor: `AIEngine._call_gemini(prompt) -> dict` compartido (lanza en fallo)
 
 **Verification:**
-- [ ] Test `pytest` con la llamada a Gemini mockeada: JSON válido → N filas `tasks` con `project_id`
-- [ ] Manual: meta "Presentación de Historia para el 15/09, rúbrica: fuentes primarias, 10 min" genera un plan coherente
+- [x] `pytest tests/test_decompose.py` → 6 passed (usa tareas de IA y ordena; clampa fechas fuera de rango; fallback si IA falla; fallback si IA devuelve pocas; `create_project` persiste; `list_projects` progreso)
+- [x] `pytest -q` total: 44 passed, 2 skipped
+- [ ] **TÚ (manual, tras Task 13):** meta real → plan coherente
 
 **Dependencies:** Task 5, Task 7
 **Files likely touched:** `src/flowtask/infrastructure/ai_engine.py`, `src/flowtask/infrastructure/database.py`, `src/flowtask/projects.py`, `migrations/versions/0007_projects.py`, `tests/test_decompose.py`

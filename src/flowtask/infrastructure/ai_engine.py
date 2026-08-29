@@ -1,8 +1,10 @@
 import json
-import httpx
 import logging
-from pydantic import BaseModel
+from datetime import date, datetime, time, timedelta
 from typing import List
+
+import httpx
+from pydantic import BaseModel
 
 from ..config import settings
 
@@ -15,6 +17,12 @@ class AIResponse(BaseModel):
     response_text: str = "" # Para que la IA pueda responderte si es charla
     is_habit: bool = False
     ids_to_complete: List[int] = []
+
+
+class GeneratedTask(BaseModel):
+    title: str
+    due_date: date
+    note: str = ""
 
 class AIEngine:
     def __init__(self):
@@ -109,3 +117,56 @@ class AIEngine:
             # En caso de error total, usamos el manual override sobre los datos por defecto
             fallback_data = self._manual_override(text, default_data)
             return AIResponse(**fallback_data)
+
+    async def _call_gemini(self, prompt: str) -> dict:
+        """Llama a Gemini y devuelve el JSON. Lanza excepción si falla."""
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        async with httpx.AsyncClient() as client:
+            r = await client.post(self.url, json=payload, timeout=20.0)
+        r.raise_for_status()
+        raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+        return json.loads(raw.strip().replace("```json", "").replace("```", ""))
+
+    async def decompose_goal(
+        self, goal: str, rubric: str, deadline: date
+    ) -> list[GeneratedTask]:
+        """Descompone una meta en tareas diarias con fecha. Fallback: hitos semanales."""
+        today = date.today()
+        prompt = (
+            f"Eres un planificador. Hoy es {today.isoformat()}. "
+            f'Meta: "{goal}". Fecha límite: {deadline.isoformat()}. '
+            f"Rúbrica de evaluación: {rubric or '(no especificada)'}.\n"
+            "Divide la meta en 4-8 tareas concretas y accionables, repartidas entre hoy y la "
+            "fecha límite (NO todas al final). Cada tarea debe apuntar a un resultado por encima "
+            "del promedio y cubrir la rúbrica.\n"
+            'Responde SOLO con JSON: {"tasks": [{"title": "...", "due_date": "YYYY-MM-DD", '
+            '"note": "qué entregar / por qué"}]}'
+        )
+        try:
+            data = await self._call_gemini(prompt)
+            out: list[GeneratedTask] = []
+            for item in data.get("tasks", []):
+                gt = GeneratedTask(**item)
+                gt.due_date = min(max(gt.due_date, today), deadline)  # dentro del rango
+                out.append(gt)
+            if len(out) >= 3:
+                out.sort(key=lambda t: t.due_date)
+                return out
+            logger.warning("decompose_goal: la IA devolvió %d tareas, usando fallback", len(out))
+        except Exception as e:
+            logger.error("decompose_goal falló (%r), usando fallback", e)
+        return self._fallback_plan(goal, deadline, today)
+
+    @staticmethod
+    def _fallback_plan(goal: str, deadline: date, today: date) -> list[GeneratedTask]:
+        span = max((deadline - today).days, 1)
+        n = max(2, min(6, span // 7 + 1))
+        step = span / n
+        return [
+            GeneratedTask(
+                title=f"{goal} — hito {i + 1}/{n}",
+                due_date=today + timedelta(days=round(step * (i + 1))),
+                note="Plan automático (IA no disponible)",
+            )
+            for i in range(n)
+        ]

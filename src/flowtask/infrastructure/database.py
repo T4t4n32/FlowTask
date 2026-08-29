@@ -4,11 +4,13 @@ from pathlib import Path
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
     Integer,
     String,
+    Text,
     Time,
     UniqueConstraint,
     create_engine,
@@ -91,6 +93,18 @@ class HabitModel(Base):
     __table_args__ = (Index("ix_habits_user_active", "user_id", "active"),)
 
 
+class ProjectModel(Base):
+    """Meta con fecha límite. `decompose_goal` genera sus tareas en `tasks`."""
+    __tablename__ = "projects"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
+    title = Column(String, nullable=False)
+    rubric = Column(Text, nullable=True)
+    deadline = Column(Date, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+
+
 class TaskModel(Base):
     __tablename__ = "tasks"
     id = Column(Integer, primary_key=True, index=True)
@@ -98,6 +112,7 @@ class TaskModel(Base):
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
     assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     habit_id = Column(Integer, ForeignKey("habits.id"), nullable=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     title = Column(String)
     category = Column(String)
     is_habit = Column(Boolean, default=False)
