@@ -192,7 +192,7 @@ políticas ahora sería contra columnas inexistentes. Lo que sí aporta valor ho
 
 ## Fase 2: Fechas naturales + recordatorios
 
-Progreso: [x] Task 7  ·  [ ] Task 8  ·  [ ] Task 9
+Progreso: [x] Task 7  ·  [x] Task 8  ·  [ ] Task 9
 
 ### Task 7: Parser de fecha/hora en español + `due_at` / `reminder_sent` — CÓDIGO HECHO (2026-08-29)
 
@@ -225,26 +225,36 @@ largas → puede quedar la fecha sin hora. El bot confirma la interpretación pa
 
 ---
 
-### Task 8: `AsyncIOScheduler` con jobstore en Postgres + barrido de recordatorios
+### Task 8: Scheduler + barrido de recordatorios — HECHA (2026-08-29)
 
-**Description:** Al `startup` de FastAPI se arranca un `AsyncIOScheduler` con `SQLAlchemyJobStore`
-apuntando a `DATABASE_URL`. Un job cada 60 s: selecciona `tasks WHERE due_at <= now() AND
-reminder_sent = false AND completed = false`, envía el recordatorio al chat del usuario y marca
-`reminder_sent = true`.
+**Description:** `AsyncIOScheduler` que arranca con la app (lifespan). Un job cada 60 s:
+`tasks WHERE due_at <= now() AND reminder_sent = false AND completed = false` → recordatorio al
+chat del usuario → `reminder_sent = true` (solo si el envío fue OK).
+
+**Ajuste vs plan:** **sin `SQLAlchemyJobStore`**. El único job (`reminder_sweep`) es código y se
+re-registra en cada arranque con `replace_existing=True`; el barrido recupera lo atrasado tras un
+reinicio por sí solo. Un jobstore persistente para un solo cron job es YAGNI (y evita las tablas de
+APScheduler en la BD + líos de pickle/pooler).
 
 **Acceptance criteria:**
-- [ ] Scheduler arranca en `startup` y se apaga limpio en `shutdown`
-- [ ] Job `reminder_sweep` registrado con `id` fijo y `replace_existing=True` (no se duplica al reiniciar)
-- [ ] El recordatorio usa el `send_message` correcto según `platform` del usuario
-- [ ] `pg_advisory_lock` (o `max_instances=1`) evita solape del barrido
-- [ ] Marca `reminder_sent` en la misma transacción que el envío exitoso
+- [x] `scheduler.start()` en el `lifespan` de FastAPI; `scheduler.shutdown()` al cerrar
+- [x] Job `reminder_sweep` con `id="reminder_sweep"`, `replace_existing=True`, `max_instances=1`, `coalesce=True`
+- [x] `src/flowtask/messaging.py` (nuevo): `send_message(platform, chat_id, text) -> bool`; el sweep lo usa según `user.platform`
+- [x] `max_instances=1` evita solape (con 1 réplica basta; `pg_advisory_lock` marcado como upgrade para multi-réplica)
+- [x] `reminder_sent = True` solo si `send_message` devolvió True (si falla, se reintenta al siguiente barrido)
+- [x] `main.py`: los 5 puntos de envío pasan a `send_message("telegram", ...)`; `send_msg`/`TELEGRAM_URL`/`httpx` salen de `main.py`
 
 **Verification:**
-- [ ] Test `pytest`: crear tarea con `due_at` en el pasado, correr el sweep una vez, assert de que se llamó a `send_message` y `reminder_sent=true`
-- [ ] Manual: crear tarea "test en 2 minutos", esperar, llega el mensaje
+- [x] `pytest tests/test_scheduler.py` → 5 passed (vencida dispara, no se repite, futura no, completada no, envío fallido no marca)
+- [x] `pytest -q` total: 25 passed, 2 skipped
+- [x] Smoke: al arrancar uvicorn → log "Scheduler arrancado (reminder_sweep cada 60s)"; dashboard 200
+- [ ] **TÚ (manual):** "recordar test en 2 minutos" al bot, esperar → llega el mensaje (requiere webhook público / Task 19)
+
+**Nota TZ:** `due_at` y `datetime.now()` son naive (hora local del server). En Railway hay que fijar `TZ` (Task 19).
+**Sin migración** (la columna `reminder_sent` la creó `0005`).
 
 **Dependencies:** Task 7
-**Files likely touched:** `src/flowtask/scheduler.py`, `src/flowtask/main.py`, `requirements.txt`, `tests/test_scheduler.py`
+**Files likely touched:** `src/flowtask/scheduler.py`, `src/flowtask/messaging.py`, `src/flowtask/main.py`, `requirements.txt`, `pyproject.toml`, `tests/test_scheduler.py`
 **Estimated scope:** Medium
 **Skills:** `cron-scheduling`, `reminder-scheduler`
 

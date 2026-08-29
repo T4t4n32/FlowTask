@@ -1,7 +1,7 @@
 import os
-import httpx
 import sys
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, date
 from typing import Optional
 from fastapi import FastAPI, Request, BackgroundTasks
@@ -17,8 +17,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
 sys.path.append(PROJECT_ROOT)
 
-from src.flowtask import nlp, teams
-from src.flowtask.config import settings
+from src.flowtask import nlp, scheduler, teams
 from src.flowtask.infrastructure.ai_engine import AIEngine
 from src.flowtask.infrastructure.database import (
     init_db,
@@ -27,25 +26,22 @@ from src.flowtask.infrastructure.database import (
     get_or_create_user,
     save_to_db,
 )
+from src.flowtask.messaging import send_message
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler.start()
+    yield
+    scheduler.shutdown()
+
+
+app = FastAPI(lifespan=lifespan)
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # Inicialización
 init_db()
 ai_engine = AIEngine()
-
-TELEGRAM_URL = f"https://api.telegram.org/bot{settings.TELEGRAM_TOKEN}/sendMessage"
-
-async def send_msg(chat_id: int, text: str):
-    """Envía mensajes a Telegram."""
-    async with httpx.AsyncClient() as client:
-        try:
-            await client.post(TELEGRAM_URL, json={
-                "chat_id": chat_id, "text": text, "parse_mode": "Markdown"
-            }, timeout=5.0)
-        except Exception as e:
-            logger.error(f"Error enviando a Telegram: {e}")
 
 def get_pending_tasks_summary(user_id: int, team_id: int | None = None):
     """Resumen de tareas pendientes de hoy. Sin team_id: personales. Con team_id: de ese equipo."""
@@ -175,7 +171,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         # --- 1. INTERCEPTOR DE COMANDOS ---
         if text.startswith("/equipo"):
             reply = handle_team_command(user_id, text)
-            background_tasks.add_task(send_msg, chat_id, reply)
+            background_tasks.add_task(send_message, "telegram", chat_id,reply)
             return {"ok": True}
 
         if text.startswith("/list"):
@@ -188,7 +184,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
                     reply = get_pending_tasks_summary(user_id, team_id=team["id"])
             else:
                 reply = get_pending_tasks_summary(user_id)
-            background_tasks.add_task(send_msg, chat_id, reply)
+            background_tasks.add_task(send_message, "telegram", chat_id,reply)
             return {"ok": True}
 
         # --- 2. PROCESAMIENTO DE IA ---
@@ -197,7 +193,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         # Si es solo charla, respondemos y NO guardamos
         if ai_res.intent == "CHAT":
             response_txt = ai_res.response_text if ai_res.response_text else "🤖 Escuchando..."
-            background_tasks.add_task(send_msg, chat_id, response_txt)
+            background_tasks.add_task(send_message, "telegram", chat_id,response_txt)
             return {"ok": True}
 
         # Si es una tarea válida (SAVE), guardamos
@@ -209,7 +205,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         if due_at:
             msg += f"\n⏰ para el {due_at.strftime('%d/%m a las %H:%M')}"
 
-        background_tasks.add_task(send_msg, chat_id, msg)
+        background_tasks.add_task(send_message, "telegram", chat_id,msg)
 
     except Exception as e:
         logger.error(f"Falla Webhook: {e}")
@@ -236,7 +232,7 @@ async def action_complete(task_id: int, user_id: int):
     if team_id is not None:
         contact = teams.owner_contact(team_id)
         if contact and contact[0] == "telegram":
-            await send_msg(int(contact[1]), f"✅ Tarea de equipo completada: *{title}*")
+            await send_message("telegram", contact[1], f"✅ Tarea de equipo completada: *{title}*")
 
     return {"ok": bool(item)}
 
