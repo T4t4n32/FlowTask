@@ -48,6 +48,23 @@ Al arrancar, la app llama a `alembic upgrade head` automáticamente (`init_db()`
 venv\Scripts\python -m uvicorn src.flowtask.main:app --reload
 ```
 
+### Seguridad de datos (RLS)
+
+La barrera **primaria** es el filtrado por `user_id` en la API (`main.py`). Encima, la migración
+`0004_rls` activa **Row Level Security** en `users`, `tasks`, `teams`, `team_members` en Supabase:
+
+- Los roles `anon` / `authenticated` (API auto-generada de Supabase, SDKs con JWT) ven **cero filas**.
+- El backend conecta como `postgres` (dueño de las tablas) y **bypasea RLS a propósito** — es el
+  servicio de confianza. No se usa `FORCE ROW LEVEL SECURITY`.
+- Las políticas por usuario (`auth.uid()`) llegan en la Task 15/16, cuando `users` se ligue a
+  Supabase Auth.
+
+Tests de RLS (hacen red contra Supabase, no corren por defecto):
+
+```bash
+RLS_TEST=1 venv\Scripts\pytest tests/test_rls.py
+```
+
 ## Estado del Proyecto
 
 **Fase actual**: Diseño y planificación previa al desarrollo  

@@ -75,7 +75,7 @@ funciona. La URL de Supabase entra en juego de verdad en la Task 3.
 
 ## Fase 1: Postgres multiusuario + equipos
 
-Progreso: [x] Task 3  ·  [x] Task 4  ·  [x] Task 5  ·  [ ] Task 6
+Progreso: [x] Task 3  ·  [x] Task 4  ·  [x] Task 5  ·  [x] Task 6  — Fase 1 COMPLETA
 
 ### Task 3: Migrar SQLAlchemy de SQLite a Supabase Postgres + Alembic — HECHA (2026-08-29)
 
@@ -156,33 +156,37 @@ Comandos de chat `/equipo crear|unir|listar`.
 
 ---
 
-### Task 6: Políticas RLS en Supabase + tests de aislamiento
+### Task 6: RLS en Supabase (deny-by-default) — HECHA (2026-08-29)
 
 **Description:** Activar RLS en `tasks`, `users`, `teams`, `team_members` como defensa en profundidad.
-Políticas: el dueño ve lo suyo; miembros de equipo ven tareas con su `team_id`. Tests que las verifican
-con un rol anon/authenticated.
+
+**Ajuste vs plan original:** las políticas por `auth.uid()` se posponen a la Task 15/16. Motivo: no
+hay Supabase Auth todavía; `users` no tiene columna que comparar con `auth.uid()`. Escribir esas
+políticas ahora sería contra columnas inexistentes. Lo que sí aporta valor hoy = **deny-by-default**.
 
 **Acceptance criteria:**
-- [ ] `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` en las 4 tablas vía migración
-- [ ] Políticas `select`/`insert`/`update` por `auth.uid()` y pertenencia a equipo
-- [ ] La conexión del backend (service role) sigue funcionando; documentado que bypassa RLS a propósito
-- [ ] Tests SQL: un usuario B no puede leer filas del usuario A vía rol authenticated
+- [x] `0004_rls`: `ENABLE ROW LEVEL SECURITY` en las 4 tablas, **sin políticas permisivas** → `anon`/`authenticated` ven 0 filas y no escriben. No-op en SQLite. `alembic check` limpio. Aplicada a Supabase (`0004_rls (head)`).
+- [x] Backend intacto: conecta como `postgres` (dueño de las tablas) → bypasea RLS. No se usa `FORCE ROW LEVEL SECURITY`.
+- [x] Documentado en README (sección "Seguridad de datos (RLS)")
+- [~] Políticas `select/insert/update` por `auth.uid()` → **movidas a Task 15/16**
 
 **Verification:**
-- [ ] Suite de tests de RLS pasa (patrón de la skill de Supabase)
-- [ ] Manual: query con JWT de B contra datos de A devuelve 0 filas
+- [x] `RLS_TEST=1 pytest tests/test_rls.py` → 2 passed contra Supabase (todo en transacción con rollback, no toca datos):
+      - con RLS + fila real + `GRANT SELECT ... TO authenticated`, el rol `authenticated` ve **0 filas**
+      - el rol por defecto (backend) sigue leyendo/escribiendo
+- [x] `pytest -q` normal: 9 passed, 2 skipped (RLS es opt-in con `RLS_TEST=1`)
+- [ ] **TÚ (manual, opcional):** en Supabase → Table Editor, cada tabla muestra el candado "RLS enabled"
 
 **Dependencies:** Task 5
-**Files likely touched:** `migrations/versions/0004_rls.py`, `tests/rls/`, `README.md`
-**Estimated scope:** Medium
+**Files likely touched:** `migrations/versions/0004_rls.py`, `tests/test_rls.py`, `README.md`
+**Estimated scope:** Small (reducido: sin políticas por auth.uid() todavía)
 **Skills:** `supabase-postgres-best-practices`
 
-### Checkpoint: Fase 1
-- [ ] `pytest tests/ -q` verde
-- [ ] `alembic upgrade head` limpio desde cero
-- [ ] Dos usuarios reales de Telegram no ven las tareas del otro
-- [ ] Flujo de equipo (crear / invitar / asignar) funciona end-to-end
-- [ ] Revisión con humano antes de seguir
+### Checkpoint: Fase 1 — COMPLETA (2026-08-29)
+- [x] `pytest -q` verde (9 passed, 2 skipped)
+- [x] `alembic upgrade head` limpio desde cero (SQLite y Supabase, hasta `0004_rls`)
+- [ ] **TÚ (manual, Task 19):** dos cuentas de Telegram reales sin cruce; flujo de equipo end-to-end
+- [ ] **Revisión con humano** antes de la Fase 2
 
 ---
 
