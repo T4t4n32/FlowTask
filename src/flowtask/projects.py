@@ -96,6 +96,37 @@ def _task_row(gt, owner, assignee, team_id, project_id):
     )
 
 
+def find_by_name(user_id: int, name: str) -> dict | None:
+    """Proyecto (propio o de un equipo del usuario) que coincide por nombre."""
+    target = name.strip().lower()
+    for p in list_projects(user_id):
+        if p["title"].lower() == target:
+            return p
+    return None
+
+
+def add_task(project_id: int, user_id: int, title: str, due_at=None) -> None:
+    """Añade una tarea suelta a un proyecto existente ('Para X, hacer Y')."""
+    db = SessionLocal()
+    try:
+        proj = db.get(ProjectModel, project_id)
+        team_id = proj.team_id if proj else None
+        db.add(
+            TaskModel(
+                user_id=user_id,
+                assignee_id=user_id if team_id else None,
+                team_id=team_id,
+                project_id=project_id,
+                title=title.strip() or "(sin título)",
+                category="TASK",
+                due_at=due_at,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
 def contacts_for(user_ids: list[int]) -> dict[int, tuple[str, str]]:
     """{user_id: (platform, chat_id)} para notificar."""
     db = SessionLocal()

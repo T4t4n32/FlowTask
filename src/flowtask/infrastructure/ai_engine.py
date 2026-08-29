@@ -33,44 +33,40 @@ class AIEngine:
         )
 
     def _manual_override(self, text: str, data: dict) -> dict:
-        """
-        Capa final de decisión. Corrige a la IA y detecta saludos simples.
-        """
+        """Capa final: detecta saludos y fuerza HABIT solo con palabras de recurrencia explícita."""
         t = text.lower().strip()
-        
-        # 1. Detectar Conversación/Saludos simples (Para evitar crear tareas basura)
+
+        # 1. Saludos / charla (evita crear tareas basura)
         chat_triggers = ["hola", "hi", "buenos dias", "buenas", "que tal", "test", "probando"]
         if t in chat_triggers or len(t) < 3:
             data["intent"] = "CHAT"
-            data["response_text"] = "👋 ¡Hola! FlowTask listo. Dime una tarea, hábito o mango."
+            data["response_text"] = "👋 ¡Hola! Dime una tarea o un hábito ('cada día...')."
             return data
 
-        # 2. Palabras Clave de MANGO (Prioridad Máxima)
-        mango_triggers = ["pagar", "factura", "banco", "cita", "reunion", "urgente", "jefe", "médico", "examen", "entrega", "deuda", "impuesto", "vencimiento"]
-        
-        # 3. Palabras Clave de HABIT (Rutinas)
-        habit_triggers = ["cada", "diario", "siempre", "rutina", "gym", "meditar", "leer", "entrenar", "estudiar", "vitaminas", "agua"]
-
-        if any(w in t for w in mango_triggers):
-            data["category"] = "MANGO_REL"
-            data["is_habit"] = False
-            data["intent"] = "SAVE"
-        elif any(w in t for w in habit_triggers):
+        # 2. HÁBITO solo si el usuario dice explícitamente que se repite
+        habit_triggers = [
+            "cada dia", "cada día", "todos los dias", "todos los días", "diariamente",
+            "a diario", "cada mañana", "cada manana", "cada tarde", "cada noche",
+            "todas las mañanas", "todas las noches", "siempre que", "rutina diaria",
+        ]
+        if any(w in t for w in habit_triggers):
             data["category"] = "HABIT"
             data["is_habit"] = True
             data["intent"] = "SAVE"
-            
+
         return data
 
     async def classify_text(self, text: str) -> AIResponse:
         system_context = (
-            "Clasifica el mensaje. Responde SOLO con JSON, sin markdown.\n"
-            'Campos: intent ("SAVE"|"CHAT"), category ("MANGO_REL"|"HABIT"|"TASK"), '
+            "Clasifica el mensaje del usuario. Responde SOLO con JSON, sin markdown.\n"
+            'Campos: intent ("SAVE"|"CHAT"), category ("HABIT"|"TASK"), '
             "clean_title (str corto, SIN fechas ni horas), "
             "response_text (str, solo si intent=CHAT), is_habit (bool).\n"
-            "MANGO_REL=dinero/pagos/citas médicas/reuniones/urgencias. "
-            "HABIT=rutinas repetidas (gym, salud, lectura). TASK=compras/recados/ideas. "
-            "CHAT=saludo o charla sin acción."
+            "HABIT = el usuario dice EXPLÍCITAMENTE que se repite ('cada día', 'todos los días', "
+            "'siempre', 'rutina'). is_habit=true.\n"
+            "TASK = todo lo demás: una acción concreta, aunque sea de una actividad que suele "
+            "repetirse, si se menciona una sola vez. is_habit=false.\n"
+            "CHAT = saludo o charla sin acción."
         )
 
         default_data = {

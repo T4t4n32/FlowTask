@@ -69,6 +69,28 @@ def _normalize(text: str) -> str:
     return t
 
 
+_TIME_PHRASE = re.compile(
+    r"\b("
+    r"hoy|mañana|manana|pasado\s+mañana|pasado\s+manana|"
+    r"(este|el|próximo|proximo)\s+(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)|"
+    r"a\s+las\s+\d{1,2}([:.]\d{2})?\s*(a\.?m\.?|p\.?m\.?|hs|hrs|h)?|"
+    r"\d{1,2}[:.]\d{2}\s*(a\.?m\.?|p\.?m\.?)?|"
+    r"\d{1,2}\s*(a\.?m\.?|p\.?m\.?)|"
+    r"\d{1,2}\s+de\s+la\s+(mañana|manana|tarde|noche|madrugada)|"
+    r"en\s+\d+\s+(minutos?|min|horas?|d[ií]as?|semanas?)|"
+    r"el\s+\d{1,2}\s+de\s+[a-záéíóú]+|"
+    r"\d{4}-\d{2}-\d{2}|"
+    r"cada\s+d[ií]a|todos\s+los\s+d[ií]as|a\s+diario|diariamente"
+    r")\b",
+    re.I,
+)
+
+
+def strip_when(text: str) -> str:
+    """Quita expresiones de fecha/hora del texto (para títulos limpios sin pasar por la IA)."""
+    return " ".join(_TIME_PHRASE.sub(" ", text).split()).strip(" ,.;:")
+
+
 def parse_when(text: str, now: datetime | None = None) -> datetime | None:
     """Devuelve el datetime mencionado en el texto, o None si no hay ninguno."""
     settings = dict(_SETTINGS)

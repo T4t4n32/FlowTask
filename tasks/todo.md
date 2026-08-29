@@ -535,6 +535,22 @@ tokens del usuario vía la API de Expo Push.
 > **Reorden (2026-08-29):** la Task 19 se hizo antes de la Fase 5. Hosting = máquina propia
 > encendida, no Railway. Bot por long-polling (sin URL pública).
 
+### Revisión tras probar en vivo (2026-08-29) — HECHA
+
+Feedback del usuario tras correr el bot real:
+- [x] **Quitar `MANGO_REL`.** Categorías ahora: `HABIT` (recurrente explícito) o `TASK` (todo lo demás).
+      Eliminado de `ai_engine` (prompt + `_manual_override`), `main.py` (`/list`, dashboard, icons), `dashboard.html`.
+- [x] **HÁBITO vs TAREA más estricto.** `_manual_override` solo fuerza HABIT con palabras de recurrencia
+      ("cada día", "todos los días", "a diario"…), no con actividades ("gym", "leer"). Prompt reescrito.
+- [x] **`Para <proyecto>, <tarea>`** → adjunta la tarea a ese proyecto (`nlp.strip_when` limpia la fecha
+      del título). Si el proyecto no existe, se guarda como tarea normal con el texto tras la coma.
+      Nuevos: `projects.find_by_name`, `projects.add_task`, `nlp.strip_when`.
+- [x] **Recordatorios más puntuales:** barrido cada **30s** (antes 60s) → como mucho ~30s de retraso.
+- [x] Tests: `test_para.py` (3), +4 casos `strip_when`. Total: 68 passed, 2 skipped.
+- [ ] **TÚ:** resetear la BD de Supabase para empezar de cero:
+      `venv\Scripts\alembic downgrade base` y luego `venv\Scripts\alembic upgrade head`
+- [ ] **TÚ:** reiniciar `run.bat` y re-probar la matriz de Fases 1-4
+
 ### Task 19: Correr 24/7 en máquina propia (long-polling) — CÓDIGO HECHO (2026-08-29)
 
 **Description:** Modo polling para no necesitar URL pública. Un solo proceso `uvicorn` levanta bot +
@@ -551,9 +567,14 @@ scheduler + panel web. Datos en Supabase.
 - [x] `pytest tests/test_poller.py` → 5 passed (dispatch llama handler+sender; ignora updates sin texto; no envía si respuesta vacía; tolera error del handler; `run` avanza el offset)
 - [x] `pytest -q` total: 61 passed, 2 skipped
 - [x] Smoke: `uvicorn` con `TELEGRAM_POLLING=1` + token falso → arranca scheduler + poller, `getUpdates` da 404 (token falso), reintenta sin crashear, dashboard 200
-- [ ] **TÚ:** en tu `.env` poner `TELEGRAM_POLLING=1` (+ `GEMINI_MODEL=gemini-flash-lite-latest`), correr `run.bat`, y mandarle un mensaje real al bot desde tu Telegram → debe responder
-- [ ] **TÚ:** dejar la máquina encendida y verificar que un recordatorio llega a su hora
+- [x] **TÚ:** `TELEGRAM_POLLING=1` en `.env` + `run.bat` → log "Telegram polling arrancado" y el bot responde a "hola" (2026-08-29)
+- [ ] **TÚ:** recorrer la matriz de prueba de Fases 1-4 (tareas con fecha, hábitos, `/list`, `/equipo`, `/proyecto`, `/proyectos`)
+- [ ] **TÚ:** recordatorio real (mandar "recordar test en 2 minutos", esperar)
 - [ ] **TÚ:** poner `run.bat` en la carpeta de Inicio de Windows
+
+**Nota:** el DNS a Supabase tropieza de vez en cuando (`getaddrinfo failed` esporádico). `reminder_sweep`
+lo reintenta al minuto y el poller ahora avisa al usuario si un mensaje cae durante el corte. Si se
+vuelve frecuente: DNS del PC a `1.1.1.1`.
 
 **Dependencies:** Task 8 (scheduler), Task 10 (núcleo agnóstico)
 **Files likely touched:** `src/flowtask/poller.py`, `src/flowtask/main.py`, `src/flowtask/config.py`, `.env.example`, `run.bat`, `README.md`, `tests/test_poller.py`

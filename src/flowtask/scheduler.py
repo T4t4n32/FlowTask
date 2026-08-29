@@ -53,7 +53,7 @@ def start() -> None:
     scheduler.add_job(
         reminder_sweep,
         "interval",
-        seconds=60,
+        seconds=30,
         id="reminder_sweep",
         replace_existing=True,
         max_instances=1,
@@ -70,7 +70,7 @@ def start() -> None:
         coalesce=True,
     )
     scheduler.start()
-    logger.info("Scheduler arrancado (reminder_sweep 60s + habit_rollover 00:05)")
+    logger.info("Scheduler arrancado (reminder_sweep 30s + habit_rollover 00:05)")
 
 
 def shutdown() -> None:

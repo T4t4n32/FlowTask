@@ -43,3 +43,18 @@ def test_sin_fecha_devuelve_none(texto):
 def test_prefiere_futuro():
     # "a las 8" ya pasó hoy (son las 14:00) -> mañana a las 8
     assert parse_when("gym a las 8", now=NOW) == datetime(2026, 8, 30, 8, 0)
+
+
+@pytest.mark.parametrize(
+    "texto, esperado",
+    [
+        ("revisar fuentes mañana a las 10", "revisar fuentes"),
+        ("escribir la intro", "escribir la intro"),
+        ("llamar a Ana el viernes a las 4pm", "llamar a Ana"),
+        ("comprar pan en 2 horas", "comprar pan"),
+    ],
+)
+def test_strip_when_quita_la_parte_de_fecha(texto, esperado):
+    from src.flowtask.nlp import strip_when
+
+    assert strip_when(texto) == esperado

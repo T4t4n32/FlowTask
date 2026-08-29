@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import sys
 import logging
 from contextlib import asynccontextmanager
@@ -73,12 +74,10 @@ def get_pending_tasks_summary(user_id: int, team_id: int | None = None):
             hora = f"{i.due_at.strftime('%H:%M')} " if i.due_at else ""
             return f"- {hora}{i.title}"
 
-        mango = [line(i) for i in items if i.category == "MANGO_REL"]
         habits = [line(i) for i in items if i.is_habit]
-        tasks = [line(i) for i in items if i.category == "TASK" and not i.is_habit]
+        tasks = [line(i) for i in items if not i.is_habit]
 
         msg = f"📅 *Resumen del {today.strftime('%d/%m')}*\n\n"
-        if mango: msg += "🥭 *PRIORIDAD MANGO*\n" + "\n".join(mango) + "\n\n"
         if habits: msg += "🔄 *HÁBITOS*\n" + "\n".join(habits) + "\n\n"
         if tasks: msg += "✅ *TAREAS*\n" + "\n".join(tasks)
 
@@ -106,9 +105,8 @@ async def view_dashboard(request: Request, user_id: int, date_param: Optional[st
             func.date(TaskModel.created_at) == target_date,
         ).order_by(TaskModel.due_at.is_(None), TaskModel.due_at).all()
         
-        mango = [i for i in items if i.category == "MANGO_REL" and not i.completed]
         habits = [i for i in items if i.is_habit and not i.completed]
-        tasks = [i for i in items if i.category == "TASK" and not i.is_habit and not i.completed]
+        tasks = [i for i in items if not i.is_habit and not i.completed]
 
         # Cálculos para estadísticas
         h_all = [i for i in items if i.is_habit]
@@ -128,7 +126,6 @@ async def view_dashboard(request: Request, user_id: int, date_param: Optional[st
             "dia_num": target_date.day,
             "mes_txt": meses[target_date.month-1],
             "current_date_iso": target_date.isoformat(),
-            "mango": mango,
             "habits": habits,
             "tasks": tasks,
             "stats": stats
@@ -164,6 +161,10 @@ def handle_team_command(user_id: int, text: str) -> str:
         ]
         return "🧑‍🤝‍🧑 *Tus equipos:*\n" + "\n".join(lines)
     return "Uso: `/equipo crear <nombre>` · `/equipo unir <codigo>` · `/equipo listar`"
+
+
+# "Para <proyecto>, <tarea>"  /  "Para <proyecto>: <tarea>"
+_PARA_RE = re.compile(r"^para\s+(.+?)\s*[,:]\s*(.+)$", re.IGNORECASE | re.DOTALL)
 
 
 def _parse_deadline(text: str):
@@ -336,7 +337,21 @@ async def handle_incoming_message(
             return f"No estás en ningún equipo llamado *{arg}*. Usa `/equipo listar`."
         return get_pending_tasks_summary(user_id, team_id=team["id"])
 
-    # --- 2. IA ---
+    # --- 2. "Para <proyecto>, <tarea>" → tarea dentro de ese proyecto ---
+    m = _PARA_RE.match(text)
+    if m:
+        proj = projects.find_by_name(user_id, m.group(1).strip())
+        if proj is not None:
+            tarea = m.group(2).strip()
+            due_at = nlp.parse_when(tarea)
+            titulo = nlp.strip_when(tarea)
+            projects.add_task(proj["id"], user_id, titulo, due_at)
+            extra = f" ⏰ {due_at.strftime('%d/%m %H:%M')}" if due_at else ""
+            return f"📁 Añadido a *{proj['title']}*: {titulo}{extra}"
+        # Sin proyecto con ese nombre: seguir con el texto tras la coma como tarea normal.
+        text = m.group(2).strip()
+
+    # --- 3. IA ---
     ai_res = await ai_engine.classify_text(text)
 
     if ai_res.intent == "CHAT":
@@ -352,8 +367,7 @@ async def handle_incoming_message(
         return msg
 
     save_to_db(ai_res, user_id, due_at)
-    icons = {"MANGO_REL": "🥭 *MANGO*", "TASK": "✅ *TAREA*"}
-    msg = f"{icons.get(ai_res.category, '📌')}\n\n*Registrado:* {ai_res.clean_title}"
+    msg = f"✅ *Registrado:* {ai_res.clean_title}"
     if due_at:
         msg += f"\n⏰ para el {due_at.strftime('%d/%m a las %H:%M')}"
     return msg

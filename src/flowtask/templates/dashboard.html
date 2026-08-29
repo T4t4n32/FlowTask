@@ -64,18 +64,6 @@
         </div>
 
         <div id="main-content">
-            {% if mango %}
-            <div class="mb-14">
-                <h3 class="text-[10px] font-black text-zinc-700 uppercase tracking-widest mb-4 ml-4">Prioridad Mango</h3>
-                {% for m in mango %}
-                <div class="mango-card p-7 rounded-[2.5rem] mb-4 flex justify-between items-center shadow-2xl transform active:scale-95 transition-transform">
-                    <span class="font-extrabold text-2xl tracking-tight">{% if m.due_at %}<span class="text-base font-bold opacity-60">{{ m.due_at.strftime('%H:%M') }}</span> {% endif %}{{ m.title }}</span>
-                    <button onclick="completar('{{m.id}}')" class="w-12 h-12 bg-black/10 rounded-2xl flex items-center justify-center font-bold">✓</button>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
-
             <div class="space-y-12">
                 <section>
                     <h3 class="text-[10px] font-black text-zinc-800 uppercase tracking-widest mb-4 ml-4">Hábitos</h3>
