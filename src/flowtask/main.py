@@ -17,7 +17,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
 sys.path.append(PROJECT_ROOT)
 
-from src.flowtask import habits, nlp, scheduler, teams
+from src.flowtask import convo_state, habits, nlp, projects, scheduler, teams
 from src.flowtask.infrastructure.ai_engine import AIEngine
 from src.flowtask.infrastructure.database import (
     init_db,
@@ -159,6 +159,101 @@ def handle_team_command(user_id: int, text: str) -> str:
     return "Uso: `/equipo crear <nombre>` · `/equipo unir <codigo>` · `/equipo listar`"
 
 
+def _parse_deadline(text: str):
+    text = text.strip()
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        pass
+    dt = nlp.parse_when(text)
+    return dt.date() if dt else None
+
+
+def _format_projects(rows: list[dict]) -> str:
+    if not rows:
+        return "No tienes proyectos. Crea uno con `/proyecto`."
+    out = ["🗂️ *Tus proyectos:*"]
+    for p in rows:
+        out.append(
+            f"• *{p['title']}* — {p['done']}/{p['total']} · límite {p['deadline'].strftime('%d/%m')}"
+        )
+    return "\n".join(out)
+
+
+async def _generate_and_confirm(platform, chat_id, user_id, goal, rubric, deadline) -> str:
+    tasks = await ai_engine.decompose_goal(goal, rubric, deadline)
+    convo_state.set(
+        platform, chat_id,
+        {"step": "confirm", "goal": goal, "rubric": rubric, "deadline": deadline, "tasks": tasks},
+    )
+    plan = "\n".join(f"• {t.due_date.strftime('%d/%m')} — {t.title}" for t in tasks)
+    return (
+        f"🗂️ *Plan para «{goal}»* (límite {deadline.strftime('%d/%m/%Y')}):\n{plan}\n\n"
+        "Responde *aceptar* o *regenerar* (o *cancelar*)."
+    )
+
+
+async def handle_project_flow(platform, chat_id, user_id: int, text: str) -> str:
+    """Asistente de `/proyecto`: meta → rúbrica → fecha → confirmar."""
+    st = convo_state.get(platform, chat_id)
+    low = text.strip().lower()
+
+    # /proyecto (re)inicia el flujo
+    if text.startswith("/proyecto"):
+        convo_state.clear(platform, chat_id)
+        arg = text[len("/proyecto"):].strip()
+        parts = [p.strip() for p in arg.split("|")]
+        if len(parts) == 3 and all(parts):
+            dl = _parse_deadline(parts[2])
+            if dl is None:
+                return "No entendí la fecha límite. Usa formato *2026-09-15*."
+            return await _generate_and_confirm(platform, chat_id, user_id, parts[0], parts[1], dl)
+        if arg:
+            convo_state.set(platform, chat_id, {"step": "rubric", "goal": arg})
+            return "📋 Meta anotada. ¿Rúbrica de evaluación? (o escribe *ninguna*)"
+        convo_state.set(platform, chat_id, {"step": "goal"})
+        return "🎯 ¿Cuál es la meta del proyecto?"
+
+    if st is None:
+        return "Empieza con `/proyecto`."
+    if low in ("/cancelar", "cancelar"):
+        convo_state.clear(platform, chat_id)
+        return "❌ Proyecto cancelado."
+
+    step = st["step"]
+    if step == "goal":
+        st.update(step="rubric", goal=text.strip())
+        return "📋 ¿Rúbrica de evaluación? (o escribe *ninguna*)"
+    if step == "rubric":
+        st.update(step="deadline", rubric="" if low in ("ninguna", "no", "-") else text.strip())
+        return "📅 ¿Fecha límite? (ej. *2026-09-15* o «15 de septiembre»)"
+    if step == "deadline":
+        dl = _parse_deadline(text)
+        if dl is None:
+            return "No entendí la fecha. Prueba con formato *2026-09-15*."
+        return await _generate_and_confirm(
+            platform, chat_id, user_id, st["goal"], st["rubric"], dl
+        )
+    if step == "confirm":
+        if low in ("aceptar", "ok", "si", "sí", "dale"):
+            res = projects.create_project(
+                user_id, st["goal"], st["rubric"], st["deadline"], st["tasks"]
+            )
+            convo_state.clear(platform, chat_id)
+            return (
+                f"✅ Proyecto *{res['title']}* creado con {res['n_tasks']} tareas. "
+                "Sus recordatorios ya están activos."
+            )
+        if low in ("regenerar", "otra", "otro", "de nuevo"):
+            return await _generate_and_confirm(
+                platform, chat_id, user_id, st["goal"], st["rubric"], st["deadline"]
+            )
+        return "Responde *aceptar* o *regenerar* (o *cancelar*)."
+
+    convo_state.clear(platform, chat_id)
+    return "Algo se enredó. Empieza de nuevo con `/proyecto`."
+
+
 async def handle_incoming_message(
     platform: str, chat_id, text: str, display_name: str = ""
 ) -> str:
@@ -168,6 +263,12 @@ async def handle_incoming_message(
     user_id = get_or_create_user(platform, chat_id, display_name)
 
     # --- 1. COMANDOS ---
+    if text.startswith("/proyectos"):
+        return _format_projects(projects.list_projects(user_id))
+
+    if text.startswith("/proyecto") or convo_state.get(platform, chat_id) is not None:
+        return await handle_project_flow(platform, chat_id, user_id, text)
+
     if text.startswith("/equipo"):
         return handle_team_command(user_id, text)
 

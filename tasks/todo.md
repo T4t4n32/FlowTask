@@ -344,7 +344,7 @@ adaptador `whatsapp.py` + endpoint `/webhook/whatsapp`, sin tocar la lógica.
 
 ## Fase 4: Descomposición de metas/proyectos
 
-Progreso: [x] Task 12  ·  [ ] Task 13  ·  [ ] Task 14
+Progreso: [x] Task 12  ·  [x] Task 13  ·  [ ] Task 14
 
 ### Task 12: Tabla `projects` + `ai_engine.decompose_goal()` — HECHA (2026-08-29)
 
@@ -371,24 +371,31 @@ trabajo entre hoy y `deadline`.
 
 ---
 
-### Task 13: Flujo de chat para crear un proyecto
+### Task 13: Flujo de chat para crear un proyecto — HECHA (2026-08-29)
 
-**Description:** Comando `/proyecto` que abre una mini-conversación (meta → rúbrica → fecha límite) o
-acepta todo en un mensaje. Al confirmar, llama a `decompose_goal`, persiste el `project` y sus tareas,
-y devuelve el plan resumido. El usuario puede aceptar o pedir regenerar.
+**Description:** `/proyecto` abre un asistente (meta → rúbrica → fecha límite) o acepta todo en un
+mensaje con `|`. Al confirmar llama a `decompose_goal` + `create_project`.
 
 **Acceptance criteria:**
-- [ ] Estado de conversación por `(platform, chat_id)` para las preguntas de seguimiento
-- [ ] "Aceptar" persiste las tareas; "regenerar" vuelve a llamar a la IA sin duplicar
-- [ ] Las tareas generadas entran en el barrido de recordatorios de Fase 2 automáticamente
-- [ ] `/proyectos` lista los proyectos del usuario y su progreso (hechas / total)
+- [x] `src/flowtask/convo_state.py`: estado en memoria por `(platform, chat_id)` (get/set/clear)
+- [x] `handle_project_flow` en `main.py`: pasos goal→rubric→deadline→confirm; `/cancelar` aborta; fecha inválida re-pregunta
+- [x] Forma corta: `/proyecto meta | rúbrica | fecha` → directo a confirmar
+- [x] "aceptar" → `create_project` (las tareas entran con `due_at` → barrido de recordatorios de Fase 2); "regenerar" → nuevo plan sin crear proyecto (no duplica)
+- [x] `/proyectos` → `_format_projects(list_projects(user_id))` con progreso `hechas/total`
+- [x] `handle_incoming_message` enruta a `/proyectos`, `/proyecto` y a cualquier mensaje si hay estado activo
 
 **Verification:**
-- [ ] Test `pytest`: máquina de estados del flujo (mensajes simulados en orden)
-- [ ] Manual: crear un proyecto por chat, ver que llegan recordatorios los días siguientes
+- [x] `pytest tests/test_project_flow.py` → 6 passed (wizard completo, forma de un mensaje, regenerar no duplica, cancelar, `/proyectos` progreso `1/3`, fecha inválida)
+- [x] `pytest -q` total: 50 passed, 2 skipped
+- [x] Smoke: `/proyecto` por webhook → proyecto + 6 tareas con recordatorio a las 09:00 (fallback, porque Gemini devolvió 404 con el modelo del `.env`)
+- [ ] **TÚ:** el `.env` tiene `GEMINI_MODEL=gemini-2.5-flash` (deprecado, da 404). Cámbialo a `gemini-flash-lite-latest` para que `decompose_goal` use la IA de verdad en vez del fallback.
+- [ ] **TÚ (manual, Task 19):** crear un proyecto por chat y ver los recordatorios los días siguientes
+
+**Ceiling (`ponytail:`):** `convo_state` es en memoria — si el server reinicia a mitad del asistente,
+el usuario reinicia `/proyecto`.
 
 **Dependencies:** Task 12
-**Files likely touched:** `src/flowtask/main.py`, `src/flowtask/projects.py`, `src/flowtask/convo_state.py`, `tests/test_project_flow.py`
+**Files likely touched:** `src/flowtask/main.py`, `src/flowtask/convo_state.py`, `tests/test_project_flow.py`, `tests/conftest.py`
 **Estimated scope:** Medium
 
 ---

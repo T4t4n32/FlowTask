@@ -12,6 +12,7 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_DB.as_posix()}"
 
 import pytest  # noqa: E402
 
+from src.flowtask import convo_state  # noqa: E402
 from src.flowtask.infrastructure.database import (  # noqa: E402
     Base,
     SessionLocal,
@@ -22,8 +23,9 @@ init_db()  # aplica todas las migraciones una vez
 
 
 @pytest.fixture(autouse=True)
-def _clean_db():
+def _clean_state():
     yield
+    convo_state._state.clear()
     db = SessionLocal()
     for table in reversed(Base.metadata.sorted_tables):
         db.execute(table.delete())
