@@ -57,17 +57,20 @@ def test_dispatch_no_envia_si_respuesta_vacia():
     assert sent == []
 
 
-def test_dispatch_tolera_error_del_handler():
+def test_dispatch_tolera_error_del_handler_y_avisa():
+    sent = []
+
     async def handler(*a):
         raise RuntimeError("boom")
 
-    async def sender(*a):
-        pass
+    async def sender(platform, chat_id, text):
+        sent.append(text)
 
-    # no debe propagar
+    # no debe propagar, y avisa al usuario
     _run(poller._dispatch(
         {"update_id": 1, "message": {"chat": {"id": 1}, "text": "x"}}, handler, sender
     ))
+    assert sent and "Error interno" in sent[0]
 
 
 def test_run_procesa_y_avanza_offset(monkeypatch):

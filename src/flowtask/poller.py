@@ -64,3 +64,7 @@ async def _dispatch(upd: dict, handler, sender) -> None:
             await sender("telegram", chat_id, reply)
     except Exception as e:  # noqa: BLE001
         logger.error("poller._dispatch: %r", e)
+        try:
+            await sender("telegram", chat_id, "⚠️ Error interno (¿base de datos?). Reintenta en un momento.")
+        except Exception:  # noqa: BLE001
+            pass
