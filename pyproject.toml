@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "flowtask"
 version = "0.1.0"
 description = "Sistema inteligente de gestión de tareas vía Telegram"
-authors = [{ name = "histsoluciones", email = "histsoluciones@gmail.com" }]
+authors = [{ name = "T4t4n32", email = "ssch200913@gmail.com" }]
 requires-python = ">=3.11"
 dependencies = [
     "fastapi",

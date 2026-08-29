@@ -55,43 +55,30 @@ class AIEngine:
         return data
 
     async def classify_text(self, text: str) -> AIResponse:
-        # Prompt más robusto para conversación y diferenciación
-        system_context = """
-        ERES FLOWTASK AI. TU OBJETIVO ES CLASIFICAR O CONVERSAR.
-        
-        SI ES UNA ACCIÓN A GUARDAR (Intent: SAVE):
-        1. MANGO_REL: Dinero, Pagos, Citas Médicas, Reuniones, Urgencias.
-        2. HABIT: Acciones repetitivas, Gym, Salud, Lectura.
-        3. TASK: Compras simples, recados, ideas.
-        
-        SI ES SOLO CHARLA (Intent: CHAT):
-        - Responde amablemente en 'response_text'.
-        
-        FORMATO JSON REQUERIDO:
-        {
-            "intent": "SAVE" | "CHAT",
-            "category": "MANGO_REL" | "HABIT" | "TASK",
-            "clean_title": "Título corto",
-            "response_text": "Texto de respuesta si es chat",
-            "is_habit": boolean
-        }
-        """
-        
+        system_context = (
+            "Clasifica el mensaje. Responde SOLO con JSON, sin markdown.\n"
+            'Campos: intent ("SAVE"|"CHAT"), category ("MANGO_REL"|"HABIT"|"TASK"), '
+            "clean_title (str corto), response_text (str, solo si intent=CHAT), is_habit (bool).\n"
+            "MANGO_REL=dinero/pagos/citas médicas/reuniones/urgencias. "
+            "HABIT=rutinas repetidas (gym, salud, lectura). TASK=compras/recados/ideas. "
+            "CHAT=saludo o charla sin acción."
+        )
+
         default_data = {
-            "intent": "SAVE", 
-            "category": "TASK", 
-            "clean_title": text[:30], 
-            "is_habit": False, 
+            "intent": "SAVE",
+            "category": "TASK",
+            "clean_title": text[:30],
+            "is_habit": False,
             "response_text": ""
+        }
+
+        payload = {
+            "contents": [{"parts": [{"text": f"{system_context}\n\nMENSAJE: {text}"}]}]
         }
 
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self.url,
-                    json={"contents": [{"parts": [{"text": f"{system_context}\n\nINPUT USUARIO: {text}"}]}]},
-                    timeout=8.0
-                )
+                response = await client.post(self.url, json=payload, timeout=15.0)
                 
                 if response.status_code == 200:
                     res_json = response.json()
@@ -107,15 +94,17 @@ class AIEngine:
 
                 # APLICAR REGLAS MANUALES AL FINAL (Tus reglas se respetan aquí)
                 final_data = self._manual_override(text, data)
-                
+
                 # Sincronización de seguridad
                 if final_data.get("category") == "HABIT":
                     final_data["is_habit"] = True
-                
+
+                # El modelo a veces devuelve campos en null; quitarlos deja que apliquen los defaults.
+                final_data = {k: v for k, v in final_data.items() if v is not None}
                 return AIResponse(**final_data)
 
         except Exception as e:
-            logger.error(f"Excepción crítica en AI: {e}")
+            logger.error(f"Excepción crítica en AI: {e!r}")
             # En caso de error total, usamos el manual override sobre los datos por defecto
             fallback_data = self._manual_override(text, default_data)
             return AIResponse(**fallback_data)

@@ -75,9 +75,9 @@ funciona. La URL de Supabase entra en juego de verdad en la Task 3.
 
 ## Fase 1: Postgres multiusuario + equipos
 
-Progreso: [~] Task 3 (código hecho; falta que TÚ pruebes contra Supabase)  ·  [ ] Task 4  ·  [ ] Task 5  ·  [ ] Task 6
+Progreso: [x] Task 3  ·  [ ] Task 4  ·  [ ] Task 5  ·  [ ] Task 6
 
-### Task 3: Migrar SQLAlchemy de SQLite a Supabase Postgres + Alembic — CÓDIGO HECHO (2026-08-28)
+### Task 3: Migrar SQLAlchemy de SQLite a Supabase Postgres + Alembic — HECHA (2026-08-29)
 
 **Description:** Cambiar el engine a Postgres, añadir `psycopg`, introducir Alembic y crear la
 migración inicial que reproduce el `tasks` actual. Sin cambios de comportamiento todavía.
@@ -88,13 +88,12 @@ migración inicial que reproduce el `tasks` actual. Sin cambios de comportamient
 - [x] Migración `0001_initial` crea `tasks` con las mismas columnas + índice `ix_tasks_id`
 - [x] `init_db()` ahora llama a `alembic upgrade head` (documentado en README, sección "Puesta en marcha")
 - [x] `alembic check` → "No new upgrade operations detected" (modelo y migración en sync)
-- [ ] **TÚ:** `alembic upgrade head` contra Supabase (ver Verificación)
+- [x] `alembic upgrade head` contra Supabase OK (tras resetear la password de la BD sin símbolos)
 
 **Verification:**
 - [x] `alembic upgrade head` / `downgrade base` / `upgrade head` en bucle: sin error (SQLite local)
 - [x] App arranca; `init_db()` aplica la migración; `/dashboard` → 200
-- [ ] **TÚ:** poner la cadena del pooler en `.env` como `DATABASE_URL`, correr
-      `venv\Scripts\alembic upgrade head`, y ver la tabla `tasks` en el Table Editor de Supabase.
+- [x] `alembic upgrade head` contra Supabase: tablas `tasks` y `alembic_version` visibles en el Table Editor
       Luego mandar un mensaje al bot y ver la fila aparecer.
 
 **Dependencies:** Task 2
