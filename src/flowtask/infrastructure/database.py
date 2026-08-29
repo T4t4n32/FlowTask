@@ -1,7 +1,17 @@
 from datetime import datetime
 from pathlib import Path
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, create_engine
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    create_engine,
+)
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from ..config import settings
@@ -32,14 +42,32 @@ Base = declarative_base()
 _ROOT = Path(__file__).resolve().parents[3]
 
 
+class UserModel(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    platform = Column(String, nullable=False)       # "telegram", luego "whatsapp"
+    chat_id = Column(String, nullable=False)        # id de chat en esa plataforma
+    display_name = Column(String)
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        UniqueConstraint("platform", "chat_id", name="uq_users_platform_chat"),
+    )
+
+
 class TaskModel(Base):
     __tablename__ = "tasks"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     title = Column(String)
     category = Column(String)
     is_habit = Column(Boolean, default=False)
     completed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("ix_tasks_user_created", "user_id", "created_at"),
+    )
 
 
 def init_db():
@@ -53,13 +81,36 @@ def init_db():
     command.upgrade(cfg, "head")
 
 
-def save_to_db(ai_res):
+def get_or_create_user(platform: str, chat_id, display_name: str = "") -> int:
+    """Devuelve el id del usuario para (platform, chat_id), creándolo si no existe."""
+    db = SessionLocal()
+    try:
+        chat_id = str(chat_id)
+        user = (
+            db.query(UserModel)
+            .filter(UserModel.platform == platform, UserModel.chat_id == chat_id)
+            .first()
+        )
+        if user is None:
+            user = UserModel(
+                platform=platform, chat_id=chat_id, display_name=display_name
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        return user.id
+    finally:
+        db.close()
+
+
+def save_to_db(ai_res, user_id: int):
     db = SessionLocal()
     new_item = TaskModel(
+        user_id=user_id,
         title=ai_res.clean_title,
         category=ai_res.category,
         is_habit=ai_res.is_habit,
-        completed=False
+        completed=False,
     )
     db.add(new_item)
     db.commit()

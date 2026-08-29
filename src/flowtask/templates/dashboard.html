@@ -19,10 +19,10 @@
 </head>
 <body class="p-6 pb-32">
 
-    <div id="stats-store" 
-         data-hd="{{ stats.h_done }}" data-ht="{{ stats.h_total }}" 
-         data-td="{{ stats.t_done }}" data-tt="{{ stats.t_total }}" 
-         data-current="{{ current_date_iso }}" style="display:none"></div>
+    <div id="stats-store"
+         data-hd="{{ stats.h_done }}" data-ht="{{ stats.h_total }}"
+         data-td="{{ stats.t_done }}" data-tt="{{ stats.t_total }}"
+         data-current="{{ current_date_iso }}" data-user-id="{{ user_id }}" style="display:none"></div>
 
     <div class="max-w-lg mx-auto">
         
@@ -142,13 +142,15 @@
             goToDate(date.toISOString().split('T')[0]);
         }
 
+        const UID = document.getElementById('stats-store').dataset.userId;
+
         function goToDate(isoDate) {
-            window.location.href = '/dashboard?date_param=' + isoDate;
+            window.location.href = '/dashboard?user_id=' + UID + '&date_param=' + isoDate;
         }
 
         async function completar(id) {
-            await fetch('/complete/' + id, { method: 'POST' });
-            refreshData(); 
+            await fetch('/complete/' + id + '?user_id=' + UID, { method: 'POST' });
+            refreshData();
         }
 
         async function refreshData() {
@@ -179,7 +181,7 @@
         async function abrirHistorial(tipo) {
             document.getElementById('modal-titulo').innerText = tipo === 'habits' ? 'Completados' : 'Tareas Hechas';
             document.getElementById('modal-historial').style.display = 'flex';
-            const res = await fetch('/api/history/' + tipo);
+            const res = await fetch('/api/history/' + tipo + '?user_id=' + UID);
             const data = await res.json();
             document.getElementById('modal-lista').innerHTML = data.map(i => `
                 <div class="flex justify-between p-4 bg-white/5 rounded-2xl">

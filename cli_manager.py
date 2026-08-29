@@ -30,12 +30,12 @@ def show_dashboard_status():
         if not items:
             print("\n   [ No hay registros el día de hoy ]")
         else:
-            print(f"{'ID':<4} | {'CAT':<10} | {'ESTADO':<8} | {'TÍTULO'}")
-            print("-" * 50)
+            print(f"{'ID':<4} | {'USER':<5} | {'CAT':<10} | {'ESTADO':<8} | {'TÍTULO'}")
+            print("-" * 60)
             for item in items:
                 status = "DONE ✅" if item.completed else "PEND ⏳"
                 emoji = "🥭" if item.category == "MANGO_REL" else "🔄" if item.is_habit else "📌"
-                print(f"{item.id:<4} | {emoji} {item.category:<7} | {status:<8} | {item.title}")
+                print(f"{item.id:<4} | {item.user_id:<5} | {emoji} {item.category:<7} | {status:<8} | {item.title}")
         
         print("\n" + "═"*50)
     finally:

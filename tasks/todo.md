@@ -75,7 +75,7 @@ funciona. La URL de Supabase entra en juego de verdad en la Task 3.
 
 ## Fase 1: Postgres multiusuario + equipos
 
-Progreso: [x] Task 3  ·  [ ] Task 4  ·  [ ] Task 5  ·  [ ] Task 6
+Progreso: [x] Task 3  ·  [x] Task 4  ·  [ ] Task 5  ·  [ ] Task 6
 
 ### Task 3: Migrar SQLAlchemy de SQLite a Supabase Postgres + Alembic — HECHA (2026-08-29)
 
@@ -103,7 +103,7 @@ migración inicial que reproduce el `tasks` actual. Sin cambios de comportamient
 
 ---
 
-### Task 4: Multiusuario — `users`, `tasks.user_id`, aislamiento en todas las queries
+### Task 4: Multiusuario — `users`, `tasks.user_id`, aislamiento — CÓDIGO HECHO (2026-08-29)
 
 **Description:** Añadir tabla `users` (id, platform, chat_id, display_name, created_at; único por
 `(platform, chat_id)`). En cada mensaje entrante, upsert del usuario. `tasks.user_id` FK NOT NULL.
@@ -111,14 +111,18 @@ migración inicial que reproduce el `tasks` actual. Sin cambios de comportamient
 `action_complete`) pasa a filtrar por `user_id`.
 
 **Acceptance criteria:**
-- [ ] Migración `0002`: tabla `users` + `tasks.user_id` FK + índice `(user_id, created_at)`
-- [ ] `get_or_create_user(platform, chat_id)` usado en el webhook antes de clasificar
-- [ ] `save_to_db` recibe y guarda `user_id`; ninguna query de tareas sin `.filter(TaskModel.user_id == ...)`
-- [ ] `action_complete` verifica que la tarea pertenece al usuario que la completa
+- [x] Migración `0002_users`: tabla `users` (único `(platform, chat_id)`) + `tasks.user_id` FK NOT NULL + índice `ix_tasks_user_created (user_id, created_at)`. Usa `batch_alter_table` → funciona en SQLite y Postgres. `alembic check` limpio.
+- [x] `get_or_create_user("telegram", chat_id, display_name)` en el webhook antes de clasificar
+- [x] `save_to_db(ai_res, user_id)` guarda el dueño; todas las queries de `main.py` filtran por `user_id`
+- [x] `action_complete` solo completa si `task.user_id == user_id` (devuelve `{"ok": false}` si no)
+- [x] `/dashboard`, `/complete`, `/api/history` ahora exigen `?user_id=` (auth real en Task 16); el template pasa el `user_id` en cada fetch
+- [x] `cli_manager.py`: columna USER en el monitor
 
 **Verification:**
-- [ ] Test `pytest`: dos usuarios distintos, cada uno solo ve sus tareas
-- [ ] Manual: dos cuentas de Telegram, `/list` no se cruzan
+- [x] `pytest tests/test_isolation.py` → 4 passed (idempotencia, aislamiento por plataforma, resumen no cruzado, no completar tarea ajena)
+- [x] `0002` aplicado a Supabase (`alembic upgrade head`) y en SQLite (vía `init_db()` en los tests)
+- [x] Server smoke: `/dashboard` sin `user_id` → 422; con `?user_id=1` → 200
+- [ ] **TÚ (manual):** dos cuentas de Telegram reales, `/list` de cada una no se cruza (requiere webhook público / Task 19)
 
 **Dependencies:** Task 3
 **Files likely touched:** `src/flowtask/infrastructure/database.py`, `src/flowtask/main.py`, `migrations/versions/0002_users.py`, `tests/test_isolation.py`

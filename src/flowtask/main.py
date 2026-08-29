@@ -19,7 +19,13 @@ sys.path.append(PROJECT_ROOT)
 
 from src.flowtask.config import settings
 from src.flowtask.infrastructure.ai_engine import AIEngine
-from src.flowtask.infrastructure.database import init_db, SessionLocal, TaskModel, save_to_db
+from src.flowtask.infrastructure.database import (
+    init_db,
+    SessionLocal,
+    TaskModel,
+    get_or_create_user,
+    save_to_db,
+)
 
 app = FastAPI()
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
@@ -40,14 +46,15 @@ async def send_msg(chat_id: int, text: str):
         except Exception as e:
             logger.error(f"Error enviando a Telegram: {e}")
 
-def get_pending_tasks_summary():
+def get_pending_tasks_summary(user_id: int):
     """Genera un resumen de tareas pendientes para el comando /list."""
     db = SessionLocal()
     try:
         today = date.today()
-        # Filtramos tareas de hoy que no estén completadas
+        # Filtramos tareas de HOY, de ESTE usuario, no completadas
         items = db.query(TaskModel).filter(
-            func.date(TaskModel.created_at) == today, 
+            TaskModel.user_id == user_id,
+            func.date(TaskModel.created_at) == today,
             TaskModel.completed == False
         ).all()
         
@@ -68,7 +75,8 @@ def get_pending_tasks_summary():
         db.close()
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def view_dashboard(request: Request, date_param: Optional[str] = None):
+async def view_dashboard(request: Request, user_id: int, date_param: Optional[str] = None):
+    # user_id es obligatorio: el panel web es por-usuario (auth real llega en la Task 16).
     db = SessionLocal()
     try:
         # Lógica de fecha segura
@@ -80,7 +88,10 @@ async def view_dashboard(request: Request, date_param: Optional[str] = None):
         else:
             target_date = date.today()
 
-        items = db.query(TaskModel).filter(func.date(TaskModel.created_at) == target_date).all()
+        items = db.query(TaskModel).filter(
+            TaskModel.user_id == user_id,
+            func.date(TaskModel.created_at) == target_date,
+        ).all()
         
         mango = [i for i in items if i.category == "MANGO_REL" and not i.completed]
         habits = [i for i in items if i.is_habit and not i.completed]
@@ -100,6 +111,7 @@ async def view_dashboard(request: Request, date_param: Optional[str] = None):
         meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
 
         return templates.TemplateResponse(request, "dashboard.html", {
+            "user_id": user_id,
             "dia_num": target_date.day,
             "mes_txt": meses[target_date.month-1],
             "current_date_iso": target_date.isoformat(),
@@ -120,10 +132,14 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
 
         chat_id = data["message"]["chat"]["id"]
         text = data["message"]["text"].strip()
+        display_name = data["message"].get("from", {}).get("first_name", "")
+
+        # Identidad = cuenta de chat. Se crea el usuario en el primer mensaje.
+        user_id = get_or_create_user("telegram", chat_id, display_name)
 
         # --- 1. INTERCEPTOR DE COMANDOS (Nuevo) ---
         if text.startswith("/list"):
-            summary = get_pending_tasks_summary()
+            summary = get_pending_tasks_summary(user_id)
             background_tasks.add_task(send_msg, chat_id, summary)
             return {"ok": True}
 
@@ -137,7 +153,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
             return {"ok": True}
 
         # Si es una tarea válida (SAVE), guardamos
-        save_to_db(ai_res)
+        save_to_db(ai_res, user_id)
 
         icons = {"MANGO_REL": "🥭 *MANGO*", "HABIT": "🔄 *HÁBITO*", "TASK": "✅ *TAREA*"}
         msg = f"{icons.get(ai_res.category, '📌')}\n\n*Registrado:* {ai_res.clean_title}"
@@ -150,20 +166,28 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     return {"ok": True}
 
 @app.post("/complete/{task_id}")
-async def action_complete(task_id: int):
+async def action_complete(task_id: int, user_id: int):
     db = SessionLocal()
-    item = db.query(TaskModel).filter(TaskModel.id == task_id).first()
+    # Solo se completa si la tarea es de ESE usuario.
+    item = db.query(TaskModel).filter(
+        TaskModel.id == task_id,
+        TaskModel.user_id == user_id,
+    ).first()
     if item:
         item.completed = True
         db.commit()
     db.close()
-    return {"ok": True}
+    return {"ok": bool(item)}
 
 @app.get("/api/history/{category_type}")
-async def get_history(category_type: str):
+async def get_history(category_type: str, user_id: int):
     db = SessionLocal()
     today = date.today()
-    items = db.query(TaskModel).filter(TaskModel.created_at >= today, TaskModel.completed == True).all()
+    items = db.query(TaskModel).filter(
+        TaskModel.user_id == user_id,
+        TaskModel.created_at >= today,
+        TaskModel.completed == True,
+    ).all()
     if category_type == "habits":
         filtered = [i for i in items if i.is_habit]
     else:
