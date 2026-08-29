@@ -55,10 +55,33 @@ class UserModel(Base):
     )
 
 
+class TeamModel(Base):
+    __tablename__ = "teams"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    invite_code = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+
+    __table_args__ = (
+        Index("uq_teams_invite_code", "invite_code", unique=True),
+    )
+
+
+class TeamMemberModel(Base):
+    __tablename__ = "team_members"
+    team_id = Column(Integer, ForeignKey("teams.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    role = Column(String, nullable=False)          # "owner" | "member"
+    joined_at = Column(DateTime, default=datetime.now)
+
+
 class TaskModel(Base):
     __tablename__ = "tasks"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
+    assignee_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     title = Column(String)
     category = Column(String)
     is_habit = Column(Boolean, default=False)

@@ -75,7 +75,7 @@ funciona. La URL de Supabase entra en juego de verdad en la Task 3.
 
 ## Fase 1: Postgres multiusuario + equipos
 
-Progreso: [x] Task 3  ·  [x] Task 4  ·  [ ] Task 5  ·  [ ] Task 6
+Progreso: [x] Task 3  ·  [x] Task 4  ·  [x] Task 5  ·  [ ] Task 6
 
 ### Task 3: Migrar SQLAlchemy de SQLite a Supabase Postgres + Alembic — HECHA (2026-08-29)
 
@@ -131,21 +131,24 @@ migración inicial que reproduce el `tasks` actual. Sin cambios de comportamient
 
 ---
 
-### Task 5: Equipos — `teams`, `team_members`, `tasks.team_id`, `tasks.assignee_id`
+### Task 5: Equipos — `teams`, `team_members`, `tasks.team_id/assignee_id` — HECHA (2026-08-29)
 
-**Description:** Modelo de equipos: `teams` (id, name, owner_id), `team_members` (team_id, user_id,
-role). `tasks` gana `team_id` NULL y `assignee_id` NULL. Comandos de chat `/equipo crear <nombre>`,
-`/equipo invitar <código>`, `/equipo listar`.
+**Description:** Modelo de equipos: `teams` (id, name, owner_id, invite_code), `team_members`
+(team_id, user_id, role — PK compuesta). `tasks` gana `team_id` NULL y `assignee_id` NULL.
+Comandos de chat `/equipo crear|unir|listar`.
 
 **Acceptance criteria:**
-- [ ] Migración `0003`: `teams`, `team_members` (PK compuesta), `tasks.team_id`, `tasks.assignee_id`
-- [ ] Un usuario puede crear un equipo, generar un código de invitación y otro unirse con él
-- [ ] `/list` puede mostrar "mis tareas" y "tareas del equipo <nombre>"
-- [ ] Al completar una tarea de equipo se notifica al `owner_id` del equipo
+- [x] Migración `0003_teams`: `teams`, `team_members` (PK compuesta `(team_id, user_id)`), `tasks.team_id`, `tasks.assignee_id`. `alembic check` limpio. Aplicada a Supabase y SQLite.
+- [x] `src/flowtask/teams.py`: `create_team`, `join_team` (idempotente, code inválido → None), `list_teams`, `get_member_team_by_name`, `owner_contact`
+- [x] `/equipo crear <nombre>` → crea equipo + código; `/equipo unir <codigo>` → se une; `/equipo listar` → sus equipos (nota: se usa `unir` en vez de `invitar` del plan; más claro para quien pega el código)
+- [x] `/list` = personales (`team_id IS NULL`); `/list <nombre-equipo>` = tareas de ese equipo (si es miembro)
+- [x] `action_complete`: un miembro asignado puede cerrar la tarea de equipo; al cerrarse, se notifica al dueño del equipo por Telegram
+- [x] `view_dashboard` sigue mostrando solo tareas personales (`team_id IS NULL`)
 
 **Verification:**
-- [ ] Test `pytest`: crear equipo, unir 2 miembros, asignar tarea, el asignado la ve
-- [ ] Manual: flujo de invitación completo entre dos cuentas
+- [x] `pytest` → 9 passed (4 isolation + 5 teams: crear/unir idempotente, code inválido, no-miembro no ve el equipo, miembro asignado completa)
+- [x] Smoke: webhook `/equipo crear` crea equipo con dueño como miembro `owner`; `/list` y dashboard OK
+- [ ] **TÚ (manual):** flujo de invitación real entre dos cuentas de Telegram (requiere webhook público / Task 19)
 
 **Dependencies:** Task 4
 **Files likely touched:** `src/flowtask/infrastructure/database.py`, `src/flowtask/main.py`, `src/flowtask/teams.py`, `migrations/versions/0003_teams.py`, `tests/test_teams.py`
