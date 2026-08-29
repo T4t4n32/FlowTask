@@ -6,6 +6,7 @@ from src.flowtask.infrastructure.database import (
     SessionLocal,
     TaskModel,
     get_or_create_user,
+    new_session,
 )
 
 
@@ -55,7 +56,7 @@ def test_miembro_asignado_puede_completar_tarea_de_equipo():
     tid = task.id
     db.close()
 
-    res = asyncio.run(main.action_complete(tid, beto))
+    res = asyncio.run(main.action_complete(tid, ft_token=new_session(beto)))
     assert res == {"ok": True}
 
     db = SessionLocal()

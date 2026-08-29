@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>FlowTask OS</title>
+    <title>FlowTask</title>
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="FlowTask">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <link rel="icon" href="/static/icon-192.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
@@ -22,7 +29,7 @@
     <div id="stats-store"
          data-hd="{{ stats.h_done }}" data-ht="{{ stats.h_total }}"
          data-td="{{ stats.t_done }}" data-tt="{{ stats.t_total }}"
-         data-current="{{ current_date_iso }}" data-user-id="{{ user_id }}" style="display:none"></div>
+         data-current="{{ current_date_iso }}" style="display:none"></div>
 
     <div class="max-w-lg mx-auto">
         
@@ -130,14 +137,12 @@
             goToDate(date.toISOString().split('T')[0]);
         }
 
-        const UID = document.getElementById('stats-store').dataset.userId;
-
         function goToDate(isoDate) {
-            window.location.href = '/dashboard?user_id=' + UID + '&date_param=' + isoDate;
+            window.location.href = '/dashboard?date_param=' + isoDate;
         }
 
         async function completar(id) {
-            await fetch('/complete/' + id + '?user_id=' + UID, { method: 'POST' });
+            await fetch('/complete/' + id, { method: 'POST' });
             refreshData();
         }
 
@@ -169,7 +174,7 @@
         async function abrirHistorial(tipo) {
             document.getElementById('modal-titulo').innerText = tipo === 'habits' ? 'Completados' : 'Tareas Hechas';
             document.getElementById('modal-historial').style.display = 'flex';
-            const res = await fetch('/api/history/' + tipo + '?user_id=' + UID);
+            const res = await fetch('/api/history/' + tipo);
             const data = await res.json();
             document.getElementById('modal-lista').innerHTML = data.map(i => `
                 <div class="flex justify-between p-4 bg-white/5 rounded-2xl">

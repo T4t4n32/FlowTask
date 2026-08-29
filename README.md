@@ -64,6 +64,16 @@ Para que arranque solo al encender el equipo (Windows): pon un acceso directo a
 
 `DATABASE_URL` debe apuntar a Supabase para que los datos persistan entre reinicios.
 
+### Panel en el celular (PWA)
+
+1. Manda `/vincular` al bot → devuelve un enlace `http://<IP-del-PC>:8000/app?code=XXXX`.
+2. Abre ese enlace **desde el celular** (misma WiFi que el PC). Queda logueado (cookie).
+3. En el navegador del móvil: menú → "Agregar a pantalla de inicio" → se ve como app.
+
+El enlace de un solo uso vale 10 min. La sesión del navegador dura un año.
+`run.bat` ya arranca con `--host 0.0.0.0` para que el celular llegue.
+Si quieres fijar la URL (ej. un dominio local), pon `PUBLIC_BASE_URL` en el `.env`.
+
 ### Seguridad de datos (RLS)
 
 La barrera **primaria** es el filtrado por `user_id` en la API (`main.py`). Encima, la migración

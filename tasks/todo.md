@@ -433,100 +433,44 @@ el barrido de recordatorios funcionen sin cambios).
 
 ---
 
-## Fase 5: App móvil (Expo / React Native)
+## Fase 5: App web instalable (PWA)
 
-### Task 15: Scaffold Expo + login Supabase Auth + vinculación de cuenta de chat
+> **Decisión 2026-08-29:** en vez de una app Expo nativa (4 tareas + Node/Expo/Firebase),
+> se hace una **PWA**: el panel web que ya existe, adaptado a móvil, con vinculación por código.
+> Se abre en el navegador del celular y "Agregar a pantalla de inicio". Notificaciones siguen
+> por Telegram. Las Tasks 16-18 originales (pantallas Expo, push de Expo) quedan **descartadas**;
+> su funcionalidad la cubre el panel web + Telegram.
 
-**Description:** App Expo nueva en `mobile/`. Login con Supabase Auth (email/OTP). Pantalla para
-introducir el código de vinculación que el bot envía por chat, que asocia `auth.uid` a la fila `users`.
-Endpoint API `POST /link` que valida el código.
+### Task 15: App web instalable + vinculación por código — CÓDIGO HECHO (2026-08-29)
 
-**Acceptance criteria:**
-- [ ] `mobile/` arranca en simulador iOS y emulador Android (workflow de la skill argent)
-- [ ] Login con Supabase Auth funciona; sesión persiste entre reinicios
-- [ ] `/vincular` en el bot genera un código de un solo uso con expiración
-- [ ] Introducir el código en la app enlaza la cuenta; `users.auth_uid` queda seteado
-
-**Verification:**
-- [ ] Manual: login + vinculación end-to-end en un dispositivo
-- [ ] Test `pytest` del endpoint `/link` (código válido / caducado / usado)
-
-**Dependencies:** Task 4
-**Files likely touched:** `mobile/` (proyecto nuevo), `src/flowtask/main.py`, `src/flowtask/auth_link.py`, `migrations/versions/0008_auth_uid.py`, `tests/test_link.py`
-**Estimated scope:** Large
-**Skills:** `argent-react-native-app-workflow`, `supabase-postgres-best-practices`
-
----
-
-### Task 16: Pantalla "Hoy" — listar y completar tareas
-
-**Description:** Endpoints REST `GET /api/tasks?date=` y `POST /api/tasks/{id}/complete` autenticados
-con el JWT de Supabase (dependencia FastAPI que verifica el token y resuelve `user_id`). Pantalla que
-lista las tareas del día agrupadas (MANGO / HÁBITOS / TAREAS) y permite marcarlas.
+**Description:** El bot da un código con `/vincular`; abres el enlace en el celular y queda logueado
+(cookie de sesión). El panel y sus endpoints se autentican por esa cookie en vez de `?user_id`.
 
 **Acceptance criteria:**
-- [ ] Dependencia `get_current_user` que valida el JWT de Supabase y devuelve la fila `users`
-- [ ] `GET /api/tasks` devuelve solo tareas del usuario autenticado, con `due_at`
-- [ ] Completar en la app refleja en DB y desaparece de la lista
-- [ ] Estados de carga / error / vacío en la pantalla
+- [x] Migración `0008_sessions`: tabla `sessions` (token PK, user_id FK, created_at, last_seen). `alembic check` limpio. Aplicada a Supabase.
+- [x] `src/flowtask/pairing.py`: códigos de un solo uso en memoria, expiran a los 10 min
+- [x] Bot: `/vincular` → enlace `<base>/app?code=XXXX` (base = `PUBLIC_BASE_URL` o IP LAN detectada)
+- [x] `GET /app?code=` → canjea el código, `set_cookie("ft_token", …, httponly, 1 año)`, 302 a `/dashboard`
+- [x] `database.new_session` / `user_from_token`; `/dashboard`, `/complete`, `/api/history` leen `ft_token` de la cookie (sin `?user_id`). Sin cookie → `/dashboard` muestra "Vincula tu cuenta"
+- [x] `static/manifest.webmanifest` + iconos 192/512 (Pillow) + `<meta>` apple / theme-color en el template
+- [x] `run.bat` con `--host 0.0.0.0`; `PUBLIC_BASE_URL` en config/.env.example
 
 **Verification:**
-- [ ] Test `pytest`: `GET /api/tasks` con JWT de A no devuelve tareas de B
-- [ ] Manual: completar una tarea en la app, verla completada en el dashboard web
+- [x] `pytest tests/test_pairing.py` → 9 passed (código un solo uso / caducado; `new_session` roundtrip; `/app` cookie+302; código malo 400; `/dashboard` sin/con cookie; `/api/history` sin cookie → `[]`; `/vincular` da enlace)
+- [x] `pytest -q` total: 77 passed, 2 skipped (2 tests de `action_complete` migrados a pasar un token en vez de user_id)
+- [x] Smoke: manifest 200, icono 200, `/dashboard` sin cookie → "Vincula", `/app?code=malo` → 400
+- [ ] **TÚ:** `/vincular` en el bot → abrir el enlace desde el celular (misma WiFi) → ver el panel → completar una tarea → se refleja
+- [ ] **TÚ:** "Agregar a pantalla de inicio" en el navegador del móvil → abre como app
 
-**Dependencies:** Task 15
-**Files likely touched:** `src/flowtask/api.py`, `src/flowtask/main.py`, `mobile/src/screens/Today.tsx`, `mobile/src/api.ts`, `tests/test_api_tasks.py`
+**Dependencies:** Task 4, Task 19
+**Files likely touched:** `src/flowtask/main.py`, `src/flowtask/pairing.py`, `src/flowtask/config.py`, `src/flowtask/infrastructure/database.py`, `src/flowtask/templates/dashboard.html`, `src/flowtask/static/` (manifest + iconos), `migrations/versions/0008_sessions.py`, `run.bat`, `.env.example`, `README.md`, `tests/test_pairing.py`
 **Estimated scope:** Medium
-
----
-
-### Task 17: Pantalla "Proyectos"
-
-**Description:** `GET /api/projects` y `GET /api/projects/{id}` (con sus tareas y progreso). Pantalla
-lista de proyectos + detalle con la línea de tiempo de tareas y, si es de equipo, el reparto por persona.
-
-**Acceptance criteria:**
-- [ ] Endpoints devuelven proyectos del usuario (propios + de sus equipos)
-- [ ] Detalle muestra tareas ordenadas por `due_at` con estado
-- [ ] Proyecto de equipo muestra el asignado de cada tarea
-- [ ] Pull-to-refresh
-
-**Verification:**
-- [ ] Test `pytest` de los endpoints (aislamiento + forma del payload)
-- [ ] Manual: crear proyecto por chat, verlo en la app con su progreso
-
-**Dependencies:** Task 16, Task 13
-**Files likely touched:** `src/flowtask/api.py`, `mobile/src/screens/Projects.tsx`, `mobile/src/screens/ProjectDetail.tsx`, `tests/test_api_projects.py`
-**Estimated scope:** Medium
-
----
-
-### Task 18: Push con `expo-notifications`
-
-**Description:** Tabla `device_tokens` (user_id, expo_push_token, platform, updated_at). La app registra
-su token al abrir. El barrido de recordatorios (Task 8), además del mensaje de chat, envía push a los
-tokens del usuario vía la API de Expo Push.
-
-**Acceptance criteria:**
-- [ ] Migración `0009`: `device_tokens` único por token
-- [ ] `POST /api/devices` guarda/renueva el token del usuario autenticado
-- [ ] El sweep envía push a Expo además del mensaje de chat, sin duplicar si el envío de chat falla
-- [ ] Tocar la push abre la tarea correspondiente (deep link)
-
-**Verification:**
-- [ ] Test `pytest`: sweep con un `device_token` registrado llama al cliente de Expo Push
-- [ ] Manual: tarea "test 2 min", llega push al dispositivo y abre la tarea
-
-**Dependencies:** Task 16, Task 8
-**Files likely touched:** `src/flowtask/scheduler.py`, `src/flowtask/api.py`, `src/flowtask/push.py`, `mobile/src/push.ts`, `migrations/versions/0009_device_tokens.py`, `tests/test_push.py`
-**Estimated scope:** Medium
-**Skills:** `capacitor-push-notifications` (solo como referencia FCM; el envío real es Expo Push)
 
 ### Checkpoint: Fase 5
-- [ ] `pytest tests/ -q` verde
-- [ ] App: login, vinculación, listar/completar tareas y ver proyectos
-- [ ] Recordatorio llega como push al móvil
-- [ ] Revisión con humano
+- [x] `pytest -q` verde (77 passed, 2 skipped)
+- [x] Migraciones al día en Supabase (`0008_sessions`)
+- [ ] **TÚ:** vinculación desde el celular + completar tareas + instalar
+- [ ] **Revisión con humano**
 
 ---
 

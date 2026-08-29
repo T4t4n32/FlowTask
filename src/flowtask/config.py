@@ -23,5 +23,8 @@ class Settings:
     # Base de datos. Por defecto SQLite local; en Task 3 se pasa a la URL de Supabase.
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./flowtask.db").strip()
 
+    # URL base del panel web para el enlace de /vincular. Vacío = se detecta la IP LAN.
+    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+
 
 settings = Settings()

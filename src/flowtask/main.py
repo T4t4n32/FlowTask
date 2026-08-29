@@ -1,13 +1,15 @@
 import asyncio
 import os
 import re
+import socket
 import sys
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, date
 from typing import Optional
-from fastapi import FastAPI, Request, BackgroundTasks
-from fastapi.responses import HTMLResponse
+from fastapi import Cookie, FastAPI, Request, BackgroundTasks
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_
 
@@ -19,7 +21,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, "../../"))
 sys.path.append(PROJECT_ROOT)
 
-from src.flowtask import convo_state, habits, nlp, poller, projects, scheduler, teams
+from src.flowtask import convo_state, habits, nlp, pairing, poller, projects, scheduler, teams
 from src.flowtask.config import settings
 from src.flowtask.infrastructure.ai_engine import AIEngine
 from src.flowtask.infrastructure.database import (
@@ -27,7 +29,9 @@ from src.flowtask.infrastructure.database import (
     SessionLocal,
     TaskModel,
     get_or_create_user,
+    new_session,
     save_to_db,
+    user_from_token,
 )
 from src.flowtask.messaging import send_message
 
@@ -45,11 +49,35 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # Inicialización
 init_db()
 ai_engine = AIEngine()
+
+
+def _base_url() -> str:
+    if settings.PUBLIC_BASE_URL:
+        return settings.PUBLIC_BASE_URL
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return f"http://{ip}:8000"
+
+
+_NO_TOKEN_HTML = (
+    "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<body style='background:#000;color:#fff;font-family:system-ui;display:flex;align-items:center;"
+    "justify-content:center;height:100vh;margin:0;text-align:center;padding:2rem'>"
+    "<div><h2>FlowTask</h2><p>Vincula tu cuenta: manda <b>/vincular</b> a tu bot de Telegram "
+    "y abre el enlace desde <b>este</b> teléfono.</p></div>"
+)
 
 def get_pending_tasks_summary(user_id: int, team_id: int | None = None):
     """Resumen de tareas pendientes de hoy. Sin team_id: personales. Con team_id: de ese equipo."""
@@ -85,9 +113,27 @@ def get_pending_tasks_summary(user_id: int, team_id: int | None = None):
     finally:
         db.close()
 
+@app.get("/app")
+def pair_and_open(code: str):
+    """El celular abre este enlace (de /vincular): canjea el código por una cookie de sesión."""
+    uid = pairing.consume(code)
+    if uid is None:
+        return HTMLResponse("Código inválido o caducado. Pide otro con /vincular en el bot.", 400)
+    resp = RedirectResponse("/dashboard", status_code=302)
+    resp.set_cookie(
+        "ft_token", new_session(uid),
+        max_age=31_536_000, httponly=True, samesite="lax", path="/",
+    )
+    return resp
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
-async def view_dashboard(request: Request, user_id: int, date_param: Optional[str] = None):
-    # user_id es obligatorio: el panel web es por-usuario (auth real llega en la Task 16).
+async def view_dashboard(
+    request: Request, date_param: Optional[str] = None, ft_token: Optional[str] = Cookie(None)
+):
+    user_id = user_from_token(ft_token)
+    if user_id is None:
+        return HTMLResponse(_NO_TOKEN_HTML, status_code=200)
     db = SessionLocal()
     try:
         # Lógica de fecha segura
@@ -122,7 +168,6 @@ async def view_dashboard(request: Request, user_id: int, date_param: Optional[st
         meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
 
         return templates.TemplateResponse(request, "dashboard.html", {
-            "user_id": user_id,
             "dia_num": target_date.day,
             "mes_txt": meses[target_date.month-1],
             "current_date_iso": target_date.isoformat(),
@@ -319,6 +364,13 @@ async def handle_incoming_message(
     user_id = get_or_create_user(platform, chat_id, display_name)
 
     # --- 1. COMANDOS ---
+    if text.startswith("/vincular") or text.startswith("/app"):
+        code = pairing.new_code(user_id)
+        return (
+            f"🔗 Abre esto en tu celular (misma WiFi):\n{_base_url()}/app?code={code}\n\n"
+            "El enlace vale 10 minutos. Luego «Agregar a pantalla de inicio»."
+        )
+
     if text.startswith("/proyectos"):
         return _format_projects(projects.list_projects(user_id))
 
@@ -390,7 +442,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     return {"ok": True}
 
 @app.post("/complete/{task_id}")
-async def action_complete(task_id: int, user_id: int):
+async def action_complete(task_id: int, ft_token: Optional[str] = Cookie(None)):
+    user_id = user_from_token(ft_token)
+    if user_id is None:
+        return {"ok": False, "auth": False}
     db = SessionLocal()
     # Se completa si la tarea es del usuario (dueño) o está asignada a él en un equipo.
     item = db.query(TaskModel).filter(
@@ -414,7 +469,10 @@ async def action_complete(task_id: int, user_id: int):
     return {"ok": bool(item)}
 
 @app.get("/api/history/{category_type}")
-async def get_history(category_type: str, user_id: int):
+async def get_history(category_type: str, ft_token: Optional[str] = Cookie(None)):
+    user_id = user_from_token(ft_token)
+    if user_id is None:
+        return []
     db = SessionLocal()
     today = date.today()
     items = db.query(TaskModel).filter(

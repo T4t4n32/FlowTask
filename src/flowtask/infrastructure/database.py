@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime
 from pathlib import Path
 
@@ -127,6 +128,41 @@ class TaskModel(Base):
         Index("ix_tasks_user_created", "user_id", "created_at"),
         Index("ix_tasks_due_pending", "due_at", "reminder_sent"),
     )
+
+
+class SessionRow(Base):
+    """Sesión del panel web (PWA). El token vive en una cookie del navegador."""
+    __tablename__ = "sessions"
+    token = Column(String, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+    last_seen = Column(DateTime, default=datetime.now)
+
+
+def new_session(user_id: int) -> str:
+    token = secrets.token_urlsafe(32)
+    db = SessionLocal()
+    try:
+        db.add(SessionRow(token=token, user_id=user_id))
+        db.commit()
+        return token
+    finally:
+        db.close()
+
+
+def user_from_token(token) -> int | None:
+    if not token:
+        return None
+    db = SessionLocal()
+    try:
+        row = db.query(SessionRow).filter_by(token=token).first()
+        if row is None:
+            return None
+        row.last_seen = datetime.now()
+        db.commit()
+        return row.user_id
+    finally:
+        db.close()
 
 
 def init_db():

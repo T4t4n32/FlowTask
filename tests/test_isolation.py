@@ -4,6 +4,7 @@ from src.flowtask.infrastructure.database import (
     SessionLocal,
     TaskModel,
     get_or_create_user,
+    new_session,
 )
 
 
@@ -47,7 +48,7 @@ def test_no_se_completa_la_tarea_de_otro():
     db.close()
 
     # Beto intenta completar la tarea de Ana -> no debe pasar nada.
-    res = asyncio.run(main.action_complete(tid, beto))
+    res = asyncio.run(main.action_complete(tid, ft_token=new_session(beto)))
     assert res == {"ok": False}
 
     db = SessionLocal()

@@ -6,4 +6,5 @@ REM   Programador de tareas apuntando a este archivo.
 
 cd /d "%~dp0"
 call venv\Scripts\activate
-python -m uvicorn src.flowtask.main:app --host 127.0.0.1 --port 8000
+REM --host 0.0.0.0 para que el celular en la misma WiFi pueda abrir el panel.
+python -m uvicorn src.flowtask.main:app --host 0.0.0.0 --port 8000
